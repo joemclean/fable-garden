@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>One Thing</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0a0a12; overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  canvas { display: block; position: fixed; inset: 0; }
+  #veil {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #0a0a12; color: #cfcfdd; cursor: pointer;
+    transition: opacity 1.2s ease;
+  }
+  #veil.gone { opacity: 0; pointer-events: none; }
+  #veil h1 {
+    font-weight: normal; font-size: 28px; letter-spacing: 0.35em;
+    margin: 0 0 14px 0.35em; opacity: 0.9;
+  }
+  #veil p {
+    font-size: 14px; letter-spacing: 0.12em; opacity: 0.45;
+    margin: 4px 0; font-style: italic;
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100% { opacity: 0.3; } 50% { opacity: 0.6; } }
+  #hint {
+    position: fixed; left: 0; right: 0; top: 12%; z-index: 5;
+    text-align: center; color: #9a9ab0; font-style: italic;
+    font-size: 15px; letter-spacing: 0.14em; pointer-events: none;
+    opacity: 0; transition: opacity 1.5s ease;
+  }
+  #hint.show { opacity: 0.55; animation: breathe 3.2s ease-in-out infinite; }
+  #rounds {
+    position: fixed; right: 16px; bottom: 14px; z-index: 5;
+    color: #8888a0; font-size: 13px; letter-spacing: 0.1em;
+    opacity: 0; transition: opacity 1s ease; pointer-events: none;
+    font-style: italic;
+  }
+  #rounds.show { opacity: 0.5; }
+  #home {
+    position: fixed; left: 0; right: 0; bottom: 10px; z-index: 5;
+    text-align: center; pointer-events: none;
+  }
+  #home a {
+    pointer-events: auto; color: #6a6a80; text-decoration: none;
+    font-size: 12px; letter-spacing: 0.15em; opacity: 0.55;
+  }
+  #home a:hover { opacity: 0.9; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint">make it one</div>
+<div id="rounds"></div>
+<div id="home"><a href="../../../viewer/">⌂ garden</a></div>
+<div id="veil">
+  <h1>ONE THING</h1>
+  <p>it has come apart</p>
+  <p>sound on &middot; touch to begin</p>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const veil = document.getElementById('veil');
+const hintEl = document.getElementById('hint');
+const roundsEl = document.getElementById('rounds');
+
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ------------------------------------------------------------------
+// The pieces of the one thing.
+// form  — the shape itself: an outline that wanders, humming a bare tone
+// color — a loose blob of hue that belongs on the form
+// voice — a ripple ring carrying the form's tone, detuned by its distance
+// ------------------------------------------------------------------
+
+const TAU = Math.PI * 2;
+const BIND_R = 58;        // inside this, a feature counts as bound
+const NEAR_R = 2.2;       // (× BIND_R) the almost-zone, where readings flicker
+const HOLD_MS = 280;      // both bound this long → snap
+
+const state = {
+  started: false,
+  t: 0,
+  round: 0,
+  phase: 'play',          // 'play' | 'snapping' | 'whole' | 'scatter'
+  phaseT: 0,
+  bothSince: -1,
+  grabbedOnce: false,
+  breath: 0,              // shared breath phase once whole
+};
+
+const form = {
+  x: 0, y: 0, r: 46,
+  wx: Math.random() * TAU, wy: Math.random() * TAU, // wander phases
+  pulsePhase: Math.random() * TAU, pulseRate: 0.9,  // its own private timeline
+  hue: 0,
+  freq: 196,
+};
+
+function makeFeature(pulseRate) {
+  return {
+    x: 0, y: 0, vx: 0, vy: 0,
+    heading: Math.random() * TAU,
+    grabbed: null,        // pointerId when held
+    pulsePhase: Math.random() * TAU, pulseRate,
+    d: 1e9, dn: 9,        // distance to form, normalized (d / BIND_R)
+    closeness: 0,         // 0 far … 1 bound, smoothed
+  };
+}
+const color = makeFeature(1.18);
+const voice = makeFeature(1.42);
+const features = [color, voice];
+
+function roundParams() {
+  const r = state.round;
+  return {
+    wanderAmp: Math.min(26 + r * 9, 92),
+    wanderRate: Math.min(0.10 + r * 0.02, 0.3),
+    driftSpeed: Math.min(5 + r * 5, 46),
+    misleading: r >= 3,   // color lies about its hue until it gets close
+  };
+}
+
+function placeRound() {
+  const p = roundParams();
+  form.hue = Math.floor(Math.random() * 360);
+  const scale = [0, 2, 4, 7, 9]; // pentatonic
+  form.freq = 165 * Math.pow(2, scale[Math.floor(Math.random() * 5)] / 12);
+  for (const f of features) {
+    const a = Math.random() * TAU;
+    const dist = Math.min(W, H) * (0.28 + Math.random() * 0.14);
+    f.x = W / 2 + Math.cos(a) * dist;
+    f.y = H / 2 + Math.sin(a) * dist;
+    f.heading = Math.random() * TAU;
+    f.vx = f.vy = 0;
+    keepIn(f);
+  }
+  // make sure they don't start bound or on top of each other
+  if (Math.hypot(color.x - voice.x, color.y - voice.y) < BIND_R * 2) {
+    voice.x = W - color.x; voice.y = H - color.y; keepIn(voice);
+  }
+  if (audio.on) audio.setBase(form.freq);
+}
+
+function keepIn(f) {
+  const m = 46;
+  f.x = Math.max(m, Math.min(W - m, f.x));
+  f.y = Math.max(m, Math.min(H - m, f.y));
+}
+
+// ------------------------------------------------------------------
+// Audio — the tone is a third of the object, not a reward on top.
+// form hums a bare sine. voice carries the same note, pushed sharp by
+// distance: near the form the two tones beat slowly — the almost-zone
+// is audible as flicker. color opens warmth: harmonics through a
+// filter that only breathes wide when the hue has come home.
+// ------------------------------------------------------------------
+const audio = {
+  on: false, ctx: null,
+  master: null, humOsc: null, humGain: null,
+  voiceOsc: null, voiceGain: null,
+  h2: null, h3: null, harmGain: null, filter: null,
+  base: 196,
+
+  init() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ac = this.ctx = new AC();
+    const t = ac.currentTime;
+
+    this.master = ac.createGain();
+    this.master.gain.value = 0.0001;
+    const comp = ac.createDynamicsCompressor();
+    this.master.connect(comp); comp.connect(ac.destination);
+
+    // form's bare hum
+    this.humOsc = ac.createOscillator();
+    this.humOsc.type = 'sine';
+    this.humOsc.frequency.value = this.base;
+    this.humGain = ac.createGain();
+    this.humGain.gain.value = 0.16;
+    this.humOsc.connect(this.humGain); this.humGain.connect(this.master);
+    this.humOsc.start(t);
+
+    // voice: same note, detuned by distance
+    this.voiceOsc = ac.createOscillator();
+    this.voiceOsc.type = 'sine';
+    this.voiceOsc.frequency.value = this.base * 1.12;
+    this.voiceGain = ac.createGain();
+    this.voiceGain.gain.value = 0.14;
+    this.voiceOsc.connect(this.voiceGain); this.voiceGain.connect(this.master);
+    this.voiceOsc.start(t);
+
+    // color: warmth — harmonics behind a nearly-closed filter
+    this.filter = ac.createBiquadFilter();
+    this.filter.type = 'lowpass';
+    this.filter.frequency.value = 240;
+    this.filter.Q.value = 0.8;
+    this.h2 = ac.createOscillator(); this.h2.type = 'triangle';
+    this.h3 = ac.createOscillator(); this.h3.type = 'sine';
+    this.h2.frequency.value = this.base * 2;
+    this.h3.frequency.value = this.base * 3;
+    this.harmGain = ac.createGain();
+    this.harmGain.gain.value = 0.0001;
+    this.h2.connect(this.filter); this.h3.connect(this.filter);
+    this.filter.connect(this.harmGain); this.harmGain.connect(this.master);
+    this.h2.start(t); this.h3.start(t);
+
+    this.master.gain.setTargetAtTime(0.85, t, 0.6);
+    this.on = true;
+  },
+
+  setBase(f) {
+    if (!this.on) return;
+    const t = this.ctx.currentTime;
+    this.base = f;
+    this.humOsc.frequency.setTargetAtTime(f, t, 0.08);
+    this.h2.frequency.setTargetAtTime(f * 2, t, 0.08);
+    this.h3.frequency.setTargetAtTime(f * 3, t, 0.08);
+  },
+
+  // called every frame; phases are the private visual timelines,
+  // so what pulses in the eye pulses identically in the ear
+  frame(voiceDn, colorClose, humPulse, voicePulse, colorPulse, whole) {
+    if (!this.on) return;
+    const t = this.ctx.currentTime;
+
+    // detune: far = clearly another note; near = slow beating; home = unison
+    const det = whole ? 0 : 26 * Math.min(1, Math.max(0, (voiceDn - 0.12) / (NEAR_R - 0.12))) ** 1.4;
+    this.voiceOsc.frequency.setTargetAtTime(this.base + det, t, 0.06);
+
+    // each stream breathes on its own timeline until bound
+    this.humGain.gain.setTargetAtTime(0.13 + 0.06 * humPulse, t, 0.05);
+    this.voiceGain.gain.setTargetAtTime(0.10 + 0.07 * voicePulse, t, 0.05);
+
+    const warm = colorClose * colorClose;
+    this.filter.frequency.setTargetAtTime(240 + warm * 2600, t, 0.07);
+    this.harmGain.gain.setTargetAtTime(warm * (0.10 + 0.05 * colorPulse) + 0.0001, t, 0.05);
+  },
+
+  snap() {
+    if (!this.on) return;
+    const ac = this.ctx, t = ac.currentTime;
+    // the thud — felt more than heard
+    const thud = ac.createOscillator(); thud.type = 'sine';
+    thud.frequency.setValueAtTime(72, t);
+    thud.frequency.exponentialRampToValueAtTime(38, t + 0.28);
+    const tg = ac.createGain();
+    tg.gain.setValueAtTime(0.9, t);
+    tg.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+    thud.connect(tg); tg.connect(this.master);
+    thud.start(t); thud.stop(t + 0.5);
+    // the bloom — a fifth swells in as the thing becomes one
+    const fifth = ac.createOscillator(); fifth.type = 'sine';
+    fifth.frequency.value = this.base * 1.5;
+    const fg = ac.createGain();
+    fg.gain.setValueAtTime(0.0001, t);
+    fg.gain.linearRampToValueAtTime(0.12, t + 0.5);
+    fg.gain.setTargetAtTime(0.0001, t + 1.6, 0.5);
+    fifth.connect(fg); fg.connect(this.master);
+    fifth.start(t); fifth.stop(t + 4);
+  },
+};
+
+// ------------------------------------------------------------------
+// Input
+// ------------------------------------------------------------------
+const pointers = new Map(); // pointerId -> {x, y}
+
+function grabbable(x, y) {
+  let best = null, bd = 72;
+  for (const f of features) {
+    if (f.grabbed !== null) continue;
+    const d = Math.hypot(f.x - x, f.y - y);
+    if (d < bd) { bd = d; best = f; }
+  }
+  return best;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!state.started) return;
+  const f = grabbable(e.clientX, e.clientY);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (f && state.phase === 'play') {
+    f.grabbed = e.pointerId;
+    if (!state.grabbedOnce) { state.grabbedOnce = true; hintEl.classList.remove('show'); }
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId);
+  if (p) { p.x = e.clientX; p.y = e.clientY; }
+});
+function release(e) {
+  for (const f of features) if (f.grabbed === e.pointerId) f.grabbed = null;
+  pointers.delete(e.pointerId);
+}
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
+
+veil.addEventListener('pointerdown', () => {
+  if (state.started) return;
+  audio.init();
+  state.started = true;
+  veil.classList.add('gone');
+  placeRound();
+  setTimeout(() => { if (!state.grabbedOnce) hintEl.classList.add('show'); }, 1800);
+}, { once: false });
+
+// ------------------------------------------------------------------
+// Update
+// ------------------------------------------------------------------
+let last = performance.now();
+
+function update(dt) {
+  const p = roundParams();
+  state.t += dt;
+
+  // the form wanders — motion is its own timeline
+  const wob = state.phase === 'whole' ? 0.25 : 1;
+  form.wx += dt * p.wanderRate * TAU * 0.11;
+  form.wy += dt * p.wanderRate * TAU * 0.074;
+  form.x = W / 2 + Math.sin(form.wx) * p.wanderAmp * wob + Math.sin(form.wx * 2.7) * p.wanderAmp * 0.3 * wob;
+  form.y = H * 0.44 + Math.cos(form.wy) * p.wanderAmp * 0.8 * wob + Math.cos(form.wy * 1.9) * p.wanderAmp * 0.25 * wob;
+
+  // private timelines drift until the snap locks them
+  if (state.phase === 'whole' || state.phase === 'snapping') {
+    state.breath += dt * 0.7 * TAU;
+  } else {
+    form.pulsePhase += dt * form.pulseRate * TAU;
+    for (const f of features) f.pulsePhase += dt * f.pulseRate * TAU;
+  }
+
+  if (state.phase === 'play') {
+    for (const f of features) {
+      if (f.grabbed !== null && pointers.has(f.grabbed)) {
+        const pt = pointers.get(f.grabbed);
+        f.x += (pt.x - f.x) * Math.min(1, dt * 14);
+        f.y += (pt.y - f.y) * Math.min(1, dt * 14);
+        f.vx = f.vy = 0;
+      } else {
+        // loose features keep sliding away on their own errand
+        f.heading += (Math.random() - 0.5) * dt * 2.2;
+        f.vx += (Math.cos(f.heading) * p.driftSpeed - f.vx) * dt * 0.8;
+        f.vy += (Math.sin(f.heading) * p.driftSpeed - f.vy) * dt * 0.8;
+        f.x += f.vx * dt; f.y += f.vy * dt;
+        const m = 46;
+        if (f.x < m || f.x > W - m) { f.heading = Math.PI - f.heading; f.vx *= -0.5; }
+        if (f.y < m || f.y > H - m) { f.heading = -f.heading; f.vy *= -0.5; }
+        keepIn(f);
+      }
+      f.d = Math.hypot(f.x - form.x, f.y - form.y);
+      f.dn = f.d / BIND_R;
+      const target = f.dn < 1 ? 1 : Math.max(0, 1 - (f.dn - 1) / (NEAR_R - 1));
+      f.closeness += (target - f.closeness) * Math.min(1, dt * 8);
+    }
+
+    const both = color.dn < 1 && voice.dn < 1;
+    if (both) {
+      if (state.bothSince < 0) state.bothSince = state.t;
+      if ((state.t - state.bothSince) * 1000 >= HOLD_MS) beginSnap();
+    } else {
+      state.bothSince = -1;
+    }
+  } else if (state.phase === 'snapping') {
+    state.phaseT += dt;
+    // features tween hard into the form — the snap is spatial too
+    const k = Math.min(1, dt * 22);
+    for (const f of features) {
+      f.x += (form.x - f.x) * k;
+      f.y += (form.y - f.y) * k;
+      f.closeness += (1 - f.closeness) * k;
+      f.d = Math.hypot(f.x - form.x, f.y - form.y); f.dn = f.d / BIND_R;
+    }
+    if (state.phaseT > 0.24) { state.phase = 'whole'; state.phaseT = 0; }
+  } else if (state.phase === 'whole') {
+    state.phaseT += dt;
+    for (const f of features) { f.x = form.x; f.y = form.y; f.dn = 0; f.closeness = 1; }
+    if (state.phaseT > 2.3) {
+      state.phase = 'scatter'; state.phaseT = 0;
+      state.round++;
+      roundsEl.textContent = 'one, ×' + state.round;
+      roundsEl.classList.add('show');
+      placeRound();
+      for (const f of features) { f.sx = form.x; f.sy = form.y; f.tx = f.x; f.ty = f.y; }
+    }
+  } else if (state.phase === 'scatter') {
+    state.phaseT += dt;
+    const u = Math.min(1, state.phaseT / 0.7);
+    const e = 1 - Math.pow(1 - u, 3);
+    for (const f of features) {
+      f.x = f.sx + (f.tx - f.sx) * e;
+      f.y = f.sy + (f.ty - f.sy) * e;
+      f.d = Math.hypot(f.x - form.x, f.y - form.y); f.dn = f.d / BIND_R;
+      f.closeness = Math.max(0, 1 - e);
+      f.pulsePhase = Math.random() * TAU;
+    }
+    if (u >= 1) { state.phase = 'play'; state.phaseT = 0; state.bothSince = -1; }
+  }
+
+  // hand the frame to the ear on the same timelines the eye gets
+  const humP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : form.pulsePhase);
+  const voiP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : voice.pulsePhase);
+  const colP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : color.pulsePhase);
+  audio.frame(voice.dn, color.closeness, humP, voiP, colP,
+              state.phase === 'whole' || state.phase === 'snapping');
+}
+
+function beginSnap() {
+  state.phase = 'snapping'; state.phaseT = 0; state.bothSince = -1;
+  state.breath = Math.PI / 2; // start the shared breath at full
+  for (const f of features) f.grabbed = null;
+  audio.snap();
+  if (navigator.vibrate) { try { navigator.vibrate([18, 40, 26]); } catch (_) {} }
+}
+
+// ------------------------------------------------------------------
+// Draw
+// ------------------------------------------------------------------
+function formPath(cx, cy, r, squish) {
+  // a soft, slightly irregular round — a thing, not a circle
+  ctx.beginPath();
+  const n = 26;
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * TAU;
+    const rr = r * (1 + 0.06 * Math.sin(a * 3 + state.t * 0.6) + 0.04 * Math.sin(a * 5 - state.t * 0.41)) * (1 + squish * 0.05 * Math.sin(a * 2));
+    const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function draw() {
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, W, H);
+  if (!state.started) return;
+
+  const p = roundParams();
+  const whole = state.phase === 'whole' || state.phase === 'snapping';
+  const humP = 0.5 + 0.5 * Math.sin(whole ? state.breath : form.pulsePhase);
+  const voiP = 0.5 + 0.5 * Math.sin(whole ? state.breath : voice.pulsePhase);
+  const colP = 0.5 + 0.5 * Math.sin(whole ? state.breath : color.pulsePhase);
+
+  // ---- the almost-zone flicker: two readings fighting ----
+  // strobe rate rises as things get close but not yet one
+  const flickC = color.closeness > 0.02 && color.closeness < 0.98 && !whole
+    ? (0.5 + 0.5 * Math.sin(state.t * (4 + color.closeness * 9) * TAU)) : 1;
+
+  // ---- form ----
+  const breatheR = form.r * (0.94 + 0.1 * humP) * (whole ? 1 + 0.05 * Math.sin(state.breath) : 1);
+  const sat = whole ? 72 : 72 * color.closeness * flickC;
+  const lig = whole ? 62 : 30 + 30 * color.closeness * flickC;
+
+  // bound-ish fill
+  if (sat > 1 || whole) {
+    formPath(form.x, form.y, breatheR, 0);
+    const g = ctx.createRadialGradient(form.x, form.y, breatheR * 0.1, form.x, form.y, breatheR);
+    g.addColorStop(0, `hsla(${form.hue}, ${sat}%, ${lig}%, ${whole ? 0.95 : 0.55 + 0.4 * color.closeness})`);
+    g.addColorStop(1, `hsla(${form.hue}, ${sat}%, ${Math.max(18, lig - 22)}%, ${whole ? 0.8 : 0.3 * color.closeness})`);
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+  // outline — always there; ghost-grey when the color is elsewhere
+  formPath(form.x, form.y, breatheR, 0);
+  ctx.lineWidth = whole ? 2.5 : 1.6;
+  ctx.strokeStyle = whole
+    ? `hsla(${form.hue}, 80%, 78%, 0.9)`
+    : `hsla(${form.hue}, ${sat * 0.8}%, ${55 + 20 * color.closeness}%, ${0.5 + 0.3 * humP})`;
+  ctx.stroke();
+
+  // snap flash
+  if (whole && state.phaseT < 0.5 && state.phase === 'whole') {
+    const u = state.phaseT / 0.5;
+    ctx.beginPath();
+    ctx.arc(form.x, form.y, breatheR + u * 90, 0, TAU);
+    ctx.strokeStyle = `hsla(${form.hue}, 90%, 85%, ${0.6 * (1 - u)})`;
+    ctx.lineWidth = 3 * (1 - u);
+    ctx.stroke();
+  }
+
+  if (state.phase === 'whole') {
+    // one thing, breathing: a single soft ripple in time with the breath
+    const bp = 0.5 + 0.5 * Math.sin(state.breath - Math.PI / 2);
+    ctx.beginPath();
+    ctx.arc(form.x, form.y, breatheR + 14 + bp * 10, 0, TAU);
+    ctx.strokeStyle = `hsla(${form.hue}, 70%, 70%, ${0.18 * (1 - bp)})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    return;
+  }
+
+  // ---- color, loose: a soft blob of hue with no shape of its own ----
+  if (color.closeness < 0.98 || !whole) {
+    const shown = p.misleading
+      ? form.hue + 150 * Math.max(0, 1 - color.closeness * 1.6)  // lies until it comes close
+      : form.hue;
+    const cr = 30 * (0.9 + 0.22 * colP);
+    const alpha = (1 - color.closeness * 0.85) * (0.75 + 0.2 * colP);
+    const g = ctx.createRadialGradient(color.x, color.y, 2, color.x, color.y, cr * 1.7);
+    g.addColorStop(0, `hsla(${shown}, 85%, 62%, ${alpha})`);
+    g.addColorStop(0.55, `hsla(${shown}, 80%, 52%, ${alpha * 0.45})`);
+    g.addColorStop(1, `hsla(${shown}, 80%, 50%, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(color.x, color.y, cr * 1.7, 0, TAU);
+    ctx.fill();
+  }
+
+  // ---- voice, loose: ripples on its own tempo ----
+  if (voice.closeness < 0.98 || !whole) {
+    const va = 1 - voice.closeness * 0.8;
+    for (let i = 0; i < 3; i++) {
+      const ph = (voice.pulsePhase / TAU + i / 3) % 1;
+      const rr = 10 + ph * 34;
+      ctx.beginPath();
+      ctx.arc(voice.x, voice.y, rr, 0, TAU);
+      ctx.strokeStyle = `hsla(0, 0%, 82%, ${va * 0.5 * (1 - ph)})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(voice.x, voice.y, 4 + 2 * voiP, 0, TAU);
+    ctx.fillStyle = `hsla(0, 0%, 88%, ${va * 0.9})`;
+    ctx.fill();
+  }
+}
+
+// expose a small handle for headless verification
+window.__ot = { state, form, color, voice, audio };
+
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (state.started) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
