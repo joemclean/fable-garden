@@ -1,0 +1,433 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>The Narrow Beam</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #06080f; overflow: hidden;
+               -webkit-user-select: none; user-select: none; touch-action: none; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #veil { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 14px; background: #06080f; color: #9aa7c4;
+          font: 15px/1.6 Georgia, serif; letter-spacing: .08em; cursor: pointer;
+          transition: opacity 1.2s ease; z-index: 2; text-align: center; padding: 0 2em; }
+  #veil.gone { opacity: 0; pointer-events: none; }
+  #veil h1 { font-size: 19px; font-weight: normal; color: #cdd6ea; letter-spacing: .22em; margin: 0; }
+  #veil p { margin: 0; opacity: .7; font-style: italic; }
+  #veil .ear { font-size: 11px; opacity: .45; margin-top: 18px; }
+  #home { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%);
+          font: 11px Georgia, serif; letter-spacing: .15em; color: #4a5470; text-decoration: none;
+          z-index: 1; opacity: .55; }
+  #home:active, #home:hover { color: #8894b5; }
+</style>
+<canvas id="c"></canvas>
+<div id="veil">
+  <h1>THE NARROW BEAM</h1>
+  <p>everything is already sounding</p>
+  <p>touch to listen</p>
+  <div class="ear">sound on &middot; headphones help</div>
+</div>
+<a id="home" href="../../../viewer/">&larr; the garden</a>
+<script>
+'use strict';
+/* The Narrow Beam — attention is a spotlight, not a floodlight.
+   Every source below plays constantly at full volume into its own gain node;
+   the beam only decides which of them reach the ear. */
+
+const canvas = document.getElementById('c');
+const g2d = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  g2d.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize); resize();
+
+/* ---------- scene ---------- */
+/* positions in unit coords (x,y in 0..1 of the shorter/longer screen axis) */
+const beam = { x: 0.5, y: 0.62, tx: 0.5, ty: 0.62, r: 0.20 }; // r as fraction of min(W,H)*1.2
+const sources = [
+  { id: 'birds',   x: 0.22, y: 0.16 },
+  { id: 'bell',    x: 0.80, y: 0.12 },
+  { id: 'voice',   x: 0.84, y: 0.52 },
+  { id: 'machine', x: 0.16, y: 0.66 },
+  { id: 'water',   x: 0.50, y: 0.90 },
+];
+const shy = { x: 0.62, y: 0.34, tx: 0.62, ty: 0.34, lit: 0, litTime: 0, fleeing: false, seen: 0 };
+for (const s of sources) s.lit = 0;
+
+function px(nx) { return nx * W; }
+function py(ny) { return ny * H; }
+function litAt(nx, ny) {
+  const bx = px(beam.x), by = py(beam.y);
+  const d = Math.hypot(px(nx) - bx, py(ny) - by);
+  const r = beam.r * Math.min(W, H) * 1.2;
+  const t = Math.max(0, Math.min(1, 1 - d / r));
+  return t * t * (3 - 2 * t); // smoothstep — the soft edge of attention
+}
+
+/* ---------- audio ---------- */
+let AC = null, master = null, noiseBuf = null;
+const gains = {};   // per-source gain nodes, driven by lit each frame
+const FLOOR = 0.015; // the unattended world, almost gone but present
+
+function makeNoise() {
+  const len = AC.sampleRate * 2;
+  const buf = AC.createBuffer(1, len, AC.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+function chan(id, x) {
+  const gn = AC.createGain(); gn.gain.value = FLOOR;
+  const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  if (pan) { pan.pan.value = (x - 0.5) * 1.5; gn.connect(pan); pan.connect(master); }
+  else gn.connect(master);
+  gains[id] = gn;
+  return gn;
+}
+
+function startAudio() {
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = 0.9;
+  const comp = AC.createDynamicsCompressor();
+  master.connect(comp); comp.connect(AC.destination);
+  noiseBuf = makeNoise();
+
+  /* birds — bright chirps, top left */
+  {
+    const out = chan('birds', sources[0].x);
+    (function chirp() {
+      const t0 = AC.currentTime + 0.02;
+      const n = Math.random() < 0.3 ? 2 : 1;
+      for (let i = 0; i < n; i++) {
+        const o = AC.createOscillator(), e = AC.createGain();
+        const f0 = 2400 + Math.random() * 1400, st = t0 + i * 0.14;
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f0, st);
+        o.frequency.exponentialRampToValueAtTime(f0 * (Math.random() < 0.5 ? 0.72 : 1.3), st + 0.09);
+        e.gain.setValueAtTime(0, st);
+        e.gain.linearRampToValueAtTime(0.5, st + 0.015);
+        e.gain.exponentialRampToValueAtTime(0.001, st + 0.12);
+        o.connect(e); e.connect(out); o.start(st); o.stop(st + 0.14);
+      }
+      setTimeout(chirp, 500 + Math.random() * 1800);
+    })();
+  }
+
+  /* bell — rare deep strike, top right */
+  {
+    const out = chan('bell', sources[1].x);
+    (function strike() {
+      const t0 = AC.currentTime + 0.02, base = 196;
+      [[1, .5], [2.02, .25], [2.74, .17], [3.76, .11], [5.4, .06]].forEach(([m, a]) => {
+        const o = AC.createOscillator(), e = AC.createGain();
+        o.type = 'sine'; o.frequency.value = base * m;
+        e.gain.setValueAtTime(a, t0);
+        e.gain.exponentialRampToValueAtTime(0.0004, t0 + 5);
+        o.connect(e); e.connect(out); o.start(t0); o.stop(t0 + 5.2);
+      });
+      bellRing = performance.now();
+      setTimeout(strike, 7000 + Math.random() * 8000);
+    })();
+  }
+
+  /* voice — a low murmur, syllabic, never words */
+  {
+    const out = chan('voice', sources[2].x);
+    const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 118;
+    const vib = AC.createOscillator(); vib.frequency.value = 4.6;
+    const vibG = AC.createGain(); vibG.gain.value = 4;
+    vib.connect(vibG); vibG.connect(o.frequency); vib.start();
+    const f1 = AC.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 500; f1.Q.value = 4;
+    const f2 = AC.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1400; f2.Q.value = 5;
+    const syl = AC.createGain(); syl.gain.value = 0;
+    o.connect(f1); o.connect(f2); f1.connect(syl); f2.connect(syl); syl.connect(out);
+    o.start();
+    (function speak() {
+      const t0 = AC.currentTime + 0.05;
+      const n = 3 + Math.floor(Math.random() * 5);
+      let t = t0;
+      for (let i = 0; i < n; i++) {
+        const dur = 0.09 + Math.random() * 0.16;
+        syl.gain.setTargetAtTime(0.18 + Math.random() * 0.12, t, 0.03);
+        f1.frequency.setTargetAtTime(350 + Math.random() * 500, t, 0.04);
+        f2.frequency.setTargetAtTime(900 + Math.random() * 1300, t, 0.04);
+        o.frequency.setTargetAtTime(105 + Math.random() * 30, t, 0.06);
+        t += dur;
+        syl.gain.setTargetAtTime(0.015, t, 0.04);
+        t += 0.03 + Math.random() * 0.09;
+      }
+      syl.gain.setTargetAtTime(0, t, 0.08);
+      setTimeout(speak, (t - t0) * 1000 + 800 + Math.random() * 2600);
+    })();
+  }
+
+  /* machine — patient hum and tick, bottom left */
+  {
+    const out = chan('machine', sources[3].x);
+    const hum = AC.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 54;
+    const hum2 = AC.createOscillator(); hum2.type = 'square'; hum2.frequency.value = 108.5;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
+    const hg = AC.createGain(); hg.gain.value = 0.16;
+    hum.connect(lp); hum2.connect(lp); lp.connect(hg); hg.connect(out);
+    hum.start(); hum2.start();
+    (function tick() {
+      const t0 = AC.currentTime + 0.02;
+      const s = AC.createBufferSource(); s.buffer = noiseBuf;
+      const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 9;
+      const e = AC.createGain();
+      e.gain.setValueAtTime(0.4, t0);
+      e.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05);
+      s.connect(bp); bp.connect(e); e.connect(out); s.start(t0); s.stop(t0 + 0.07);
+      machineTick = performance.now();
+      setTimeout(tick, 760);
+    })();
+  }
+
+  /* water — a small stream, bottom center */
+  {
+    const out = chan('water', sources[4].x);
+    const s = AC.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.8;
+    const wg = AC.createGain(); wg.gain.value = 0.22;
+    const lfo = AC.createOscillator(); lfo.frequency.value = 0.31;
+    const lg = AC.createGain(); lg.gain.value = 260;
+    lfo.connect(lg); lg.connect(bp.frequency); lfo.start();
+    s.connect(bp); bp.connect(wg); wg.connect(out); s.start();
+  }
+
+  /* the shy one — sings only in the dark; its gain runs OPPOSITE the beam */
+  {
+    const gn = AC.createGain(); gn.gain.value = 1;
+    const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+    const dly = AC.createDelay(); dly.delayTime.value = 0.28;
+    const fb = AC.createGain(); fb.gain.value = 0.35;
+    dly.connect(fb); fb.connect(dly);
+    if (pan) { gn.connect(pan); dly.connect(pan); pan.connect(master); shy.pan = pan; }
+    else { gn.connect(master); dly.connect(master); }
+    gn.connect(dly);
+    gains.shy = gn;
+    const notes = [1046.5, 1174.7, 1318.5, 1568, 1760];
+    (function sing() {
+      if (shy.lit < 0.12 && !shy.fleeing) {
+        const t0 = AC.currentTime + 0.02;
+        const o = AC.createOscillator(), e = AC.createGain();
+        o.type = 'triangle';
+        o.frequency.value = notes[Math.floor(Math.random() * notes.length)];
+        e.gain.setValueAtTime(0, t0);
+        e.gain.linearRampToValueAtTime(0.16, t0 + 0.01);
+        e.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+        o.connect(e); e.connect(gn); o.start(t0); o.stop(t0 + 0.55);
+        shySang = performance.now();
+      }
+      setTimeout(sing, 900 + Math.random() * 900);
+    })();
+  }
+}
+
+/* ---------- input ---------- */
+const veil = document.getElementById('veil');
+let started = false;
+function begin(ev) {
+  if (started) return; started = true;
+  startAudio();
+  veil.classList.add('gone');
+  point(ev);
+}
+function point(ev) {
+  const e = ev.touches ? ev.touches[0] : ev;
+  if (!e || e.clientX === undefined) return;
+  beam.tx = e.clientX / W; beam.ty = e.clientY / H;
+}
+veil.addEventListener('pointerdown', begin);
+window.addEventListener('pointerdown', ev => { if (started) point(ev); });
+window.addEventListener('pointermove', ev => { if (started && (ev.pressure > 0 || ev.pointerType === 'mouse')) point(ev); });
+window.addEventListener('touchmove', ev => { if (started) { ev.preventDefault(); point(ev); } }, { passive: false });
+
+/* ---------- the shy one's mind ---------- */
+let bellRing = -1e9, machineTick = -1e9, shySang = -1e9;
+function updateShy(dt, now) {
+  shy.lit = litAt(shy.x, shy.y);
+  if (shy.lit > 0.5) shy.litTime += dt; else shy.litTime = Math.max(0, shy.litTime - dt * 2);
+  if (shy.litTime > 0.9 && !shy.fleeing) {
+    /* held in the light too long: it slips away through the dark */
+    shy.fleeing = true; shy.seen++;
+    let bx, by, tries = 0;
+    do {
+      bx = 0.12 + Math.random() * 0.76; by = 0.12 + Math.random() * 0.68; tries++;
+    } while (litAt(bx, by) > 0.05 && tries < 40);
+    shy.tx = bx; shy.ty = by;
+  }
+  const sp = shy.fleeing ? 0.55 : 0.018;
+  shy.x += (shy.tx - shy.x) * Math.min(1, sp * dt * 6);
+  shy.y += (shy.ty - shy.y) * Math.min(1, sp * dt * 6);
+  if (shy.fleeing && Math.hypot(shy.tx - shy.x, shy.ty - shy.y) < 0.01) {
+    shy.fleeing = false; shy.litTime = 0;
+  }
+  if (!shy.fleeing && Math.random() < dt * 0.15) {
+    /* an idle drift, small enough to follow by ear */
+    shy.tx = Math.max(0.1, Math.min(0.9, shy.x + (Math.random() - 0.5) * 0.16));
+    shy.ty = Math.max(0.1, Math.min(0.8, shy.y + (Math.random() - 0.5) * 0.16));
+  }
+  if (AC && shy.pan) shy.pan.pan.setTargetAtTime((shy.x - 0.5) * 1.5, AC.currentTime, 0.2);
+}
+
+/* ---------- drawing ---------- */
+function blob(x, y, r, a) {
+  const gr = g2d.createRadialGradient(x, y, 0, x, y, r);
+  gr.addColorStop(0, `rgba(120,132,168,${a})`);
+  gr.addColorStop(1, 'rgba(120,132,168,0)');
+  g2d.fillStyle = gr;
+  g2d.beginPath(); g2d.arc(x, y, r, 0, 7); g2d.fill();
+}
+const draw = {
+  birds(x, y, lit, t) {
+    blob(x, y, 60, 0.10 * (1 - lit));
+    if (lit < 0.02) return;
+    g2d.globalAlpha = lit;
+    g2d.strokeStyle = '#5a4a3a'; g2d.lineWidth = 3;
+    g2d.beginPath(); g2d.moveTo(x, y + 55); g2d.lineTo(x, y + 10);
+    g2d.moveTo(x, y + 22); g2d.lineTo(x - 26, y + 2);
+    g2d.moveTo(x, y + 16); g2d.lineTo(x + 24, y - 4); g2d.stroke();
+    g2d.fillStyle = '#2e4632';
+    g2d.beginPath(); g2d.arc(x - 6, y - 6, 30, 0, 7); g2d.fill();
+    g2d.strokeStyle = '#e8d9a0'; g2d.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      const bx = x - 18 + i * 16, by = y - 10 + Math.sin(t * (3 + i) + i * 2) * 4;
+      g2d.beginPath(); g2d.moveTo(bx - 5, by); g2d.lineTo(bx, by - 4); g2d.lineTo(bx + 5, by); g2d.stroke();
+    }
+    g2d.globalAlpha = 1;
+  },
+  bell(x, y, lit, t) {
+    blob(x, y, 55, 0.10 * (1 - lit));
+    if (lit < 0.02) return;
+    const swing = Math.sin((performance.now() - bellRing) / 300) *
+                  Math.max(0, 1 - (performance.now() - bellRing) / 3000) * 0.25;
+    g2d.globalAlpha = lit;
+    g2d.strokeStyle = '#6a5f4a'; g2d.lineWidth = 3;
+    g2d.beginPath(); g2d.moveTo(x - 28, y - 26); g2d.lineTo(x + 28, y - 26); g2d.stroke();
+    g2d.save(); g2d.translate(x, y - 26); g2d.rotate(swing);
+    g2d.fillStyle = '#c9a94f';
+    g2d.beginPath(); g2d.moveTo(-3, 0); g2d.lineTo(3, 0); g2d.lineTo(14, 30);
+    g2d.quadraticCurveTo(0, 38, -14, 30); g2d.closePath(); g2d.fill();
+    g2d.fillStyle = '#8a7435'; g2d.beginPath(); g2d.arc(0, 34, 4, 0, 7); g2d.fill();
+    g2d.restore(); g2d.globalAlpha = 1;
+  },
+  voice(x, y, lit, t) {
+    blob(x, y, 55, 0.10 * (1 - lit));
+    if (lit < 0.02) return;
+    g2d.globalAlpha = lit;
+    g2d.fillStyle = '#3a3020';
+    g2d.fillRect(x - 26, y - 34, 52, 68);
+    g2d.fillStyle = '#f0c96e';
+    g2d.fillRect(x - 20, y - 28, 40, 56);
+    g2d.fillStyle = '#241c10';
+    g2d.beginPath(); g2d.arc(x, y + 6, 11, 0, 7); g2d.fill();      /* a head */
+    g2d.fillRect(x - 14, y + 12, 28, 16);                           /* shoulders */
+    g2d.globalAlpha = 1;
+  },
+  machine(x, y, lit, t) {
+    blob(x, y, 60, 0.10 * (1 - lit));
+    if (lit < 0.02) return;
+    g2d.globalAlpha = lit;
+    g2d.fillStyle = '#37404f';
+    g2d.fillRect(x - 32, y - 22, 64, 46);
+    const ga = t * 0.8;
+    g2d.strokeStyle = '#7d8aa0'; g2d.lineWidth = 3;
+    g2d.beginPath(); g2d.arc(x - 10, y, 13, 0, 7); g2d.stroke();
+    for (let i = 0; i < 6; i++) {
+      const a = ga + i * Math.PI / 3;
+      g2d.beginPath();
+      g2d.moveTo(x - 10 + Math.cos(a) * 13, y + Math.sin(a) * 13);
+      g2d.lineTo(x - 10 + Math.cos(a) * 18, y + Math.sin(a) * 18);
+      g2d.stroke();
+    }
+    const blink = (performance.now() - machineTick) < 120;
+    g2d.fillStyle = blink ? '#ff7a5c' : '#5c2e24';
+    g2d.beginPath(); g2d.arc(x + 20, y - 10, 4, 0, 7); g2d.fill();
+    g2d.globalAlpha = 1;
+  },
+  water(x, y, lit, t) {
+    blob(x, y, 70, 0.09 * (1 - lit));
+    if (lit < 0.02) return;
+    g2d.globalAlpha = lit;
+    g2d.strokeStyle = '#5e86b8'; g2d.lineWidth = 2.5;
+    for (let row = 0; row < 3; row++) {
+      g2d.beginPath();
+      for (let i = -46; i <= 46; i += 4) {
+        const yy = y + row * 10 - 8 + Math.sin(i * 0.14 + t * 2.4 + row) * 3.4;
+        i === -46 ? g2d.moveTo(x + i, yy) : g2d.lineTo(x + i, yy);
+      }
+      g2d.stroke();
+    }
+    g2d.globalAlpha = 1;
+  },
+};
+
+function drawShy(t) {
+  const x = px(shy.x), y = py(shy.y);
+  if (shy.lit > 0.15) {
+    /* caught in the beam: a crisp, still, silent little moth */
+    g2d.globalAlpha = Math.min(1, shy.lit * 1.4);
+    g2d.fillStyle = '#dfe8ff';
+    g2d.beginPath(); g2d.ellipse(x - 6, y, 7, 4, -0.5, 0, 7); g2d.fill();
+    g2d.beginPath(); g2d.ellipse(x + 6, y, 7, 4, 0.5, 0, 7); g2d.fill();
+    g2d.fillStyle = '#9fb2e8';
+    g2d.fillRect(x - 1.5, y - 5, 3, 12);
+    g2d.globalAlpha = 1;
+  } else {
+    /* in the dark it is only a breath of light where its song is */
+    const s = Math.max(0, 1 - (performance.now() - shySang) / 700);
+    if (s > 0) {
+      g2d.globalAlpha = s * 0.35;
+      blob(x, y, 26, 0.5);
+      g2d.globalAlpha = 1;
+    }
+  }
+}
+
+/* ---------- frame ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const t = now / 1000;
+
+  beam.x += (beam.tx - beam.x) * Math.min(1, dt * 7);
+  beam.y += (beam.ty - beam.y) * Math.min(1, dt * 7);
+
+  updateShy(dt, now);
+
+  /* audio follows the beam: attended sources rise, the rest sink to the floor */
+  if (AC) {
+    for (const s of sources) {
+      s.lit = litAt(s.x, s.y);
+      const target = FLOOR + (1 - FLOOR) * Math.pow(s.lit, 1.4);
+      gains[s.id].gain.setTargetAtTime(target, AC.currentTime, 0.09);
+    }
+    /* the shy one is the inverse: lighting it silences it */
+    gains.shy.gain.setTargetAtTime(Math.pow(1 - shy.lit, 2), AC.currentTime, 0.12);
+  } else {
+    for (const s of sources) s.lit = litAt(s.x, s.y);
+  }
+
+  /* night */
+  g2d.fillStyle = '#06080f';
+  g2d.fillRect(0, 0, W, H);
+
+  /* the beam itself — a soft cone of pale light */
+  const bx = px(beam.x), by = py(beam.y), br = beam.r * Math.min(W, H) * 1.2;
+  const bg = g2d.createRadialGradient(bx, by, 0, bx, by, br);
+  bg.addColorStop(0, 'rgba(212,222,248,0.14)');
+  bg.addColorStop(0.6, 'rgba(180,195,235,0.07)');
+  bg.addColorStop(1, 'rgba(160,175,220,0)');
+  g2d.fillStyle = bg;
+  g2d.fillRect(0, 0, W, H);
+
+  for (const s of sources) draw[s.id](px(s.x), py(s.y), s.lit, t);
+  drawShy(t);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>

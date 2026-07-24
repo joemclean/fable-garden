@@ -6,7 +6,7 @@
     4
   ],
   "plots": {
-    "a1": { "stage": 1, "title": "The Narrow Beam", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
+    "a1": { "stage": 2, "title": "The Narrow Beam", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable beam: five sounding places, one shy thing you can't hear while looking at", "door": "plots/a1/growth/index.html" },
     "b1": { "stage": 1, "title": "Didn't You Notice", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "c1": { "stage": 1, "title": "One Thing", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "d1": { "stage": 1, "title": "Seeing With Your Ears", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
