@@ -1,0 +1,400 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Seeing With Your Ears</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #cfcabe;
+         -webkit-user-select: none; user-select: none; touch-action: none; }
+  canvas { position: fixed; inset: 0; display: block; }
+  #home { position: fixed; top: 10px; left: 12px; z-index: 30;
+          color: #cfcabe; opacity: .22; font-size: 13px; text-decoration: none; }
+  #home:hover { opacity: .6; }
+  #veil { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; text-align: center;
+          background: #000; transition: opacity 1.6s ease; padding: 0 2em; }
+  #veil.gone { opacity: 0; pointer-events: none; }
+  #veil h1 { font-weight: normal; font-size: 21px; letter-spacing: .14em;
+             color: #a9a294; margin: 0 0 .9em; }
+  #veil p { font-size: 15px; line-height: 1.7; color: #6f6a60; margin: .2em 0; }
+  #hint { position: fixed; left: 0; right: 0; bottom: 14vh; z-index: 10;
+          text-align: center; font-size: 15px; color: #59544b;
+          opacity: 0; transition: opacity 2s ease; pointer-events: none; }
+</style>
+
+<canvas id="cv"></canvas>
+<a id="home" href="../../../viewer/">&larr; the garden</a>
+
+<div id="veil">
+  <h1>seeing with your ears</h1>
+  <p>the room is dark. something in it is humming.</p>
+  <p>headphones on &mdash; then touch, and listen.</p>
+</div>
+<div id="hint">drag to drift toward the sound</div>
+
+<script>
+'use strict';
+
+// ---------- world state (normalized 0..1 coords, converted per frame) ----------
+const S = {
+  started: false,
+  round: 1,
+  player: { x: 0.5, y: 0.78, vx: 0, vy: 0 },
+  target: null,          // {x,y,drift}
+  twin: null,            // false target, rough-voiced (later rounds)
+  hazards: [],           // [{x,y}]
+  stars: [],             // [{x,y,born}] one per catch, permanent
+  stun: 0,               // seconds of knockback remaining
+  glow: null,            // {x,y,t} catch ripple
+  lastStep: 0,
+};
+
+const cv = document.getElementById('cv');
+const g2 = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1, MIN = 0;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  MIN = Math.min(W, H);
+  cv.width = W * DPR; cv.height = H * DPR;
+  g2.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const px = p => ({ x: p.x * W, y: p.y * H });
+const dist = (a, b) => Math.hypot((a.x - b.x) * W, (a.y - b.y) * H);
+const rnd = (lo, hi) => lo + Math.random() * (hi - lo);
+
+// ---------- audio ----------
+let AC = null, master = null;
+let voice = null, twinVoice = null, growls = [];
+
+function makeVoice(rough) {
+  // two detuned oscs -> tremble(only if rough) -> gain -> lowpass -> pan
+  const o1 = AC.createOscillator(), o2 = AC.createOscillator();
+  o1.type = 'sine'; o2.type = rough ? 'sawtooth' : 'sine';
+  o2.detune.value = rough ? 9 : 5;
+  const vib = AC.createOscillator(), vibG = AC.createGain();
+  vib.frequency.value = rough ? 6.3 : 4.7; vibG.gain.value = 6;
+  vib.connect(vibG); vibG.connect(o1.frequency); vibG.connect(o2.frequency);
+  const gain = AC.createGain(); gain.gain.value = 0;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 800;
+  const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  o1.connect(gain); o2.connect(gain);
+  let trem = null;
+  if (rough) { // audible burr: fast amplitude flutter marks the false voice
+    trem = AC.createOscillator(); trem.type = 'square'; trem.frequency.value = 26;
+    const tg = AC.createGain(); tg.gain.value = 0.45;
+    trem.connect(tg); tg.connect(gain.gain); trem.start();
+  }
+  gain.connect(lp);
+  if (pan) { lp.connect(pan); pan.connect(master); } else { lp.connect(master); }
+  // shimmer: high partial that opens only when near
+  const sh = AC.createOscillator(); sh.type = 'sine';
+  const shG = AC.createGain(); shG.gain.value = 0;
+  sh.connect(shG); shG.connect(pan || master);
+  o1.start(); o2.start(); sh.start(); vib.start();
+  return { o1, o2, sh, shG, gain, lp, pan, stopNodes: [o1, o2, sh, vib, trem].filter(Boolean) };
+}
+
+function killVoice(v) {
+  if (!v) return;
+  const t = AC.currentTime;
+  v.gain.gain.cancelScheduledValues(t);
+  v.gain.gain.setTargetAtTime(0, t, 0.05);
+  v.shG.gain.setTargetAtTime(0, t, 0.05);
+  setTimeout(() => v.stopNodes.forEach(n => { try { n.stop(); } catch (e) {} }), 400);
+}
+
+function makeGrowl() {
+  // rough low presence: saw + filtered noise, spatialized like the voices
+  const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 61;
+  const nbuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+  const d = nbuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const n = AC.createBufferSource(); n.buffer = nbuf; n.loop = true;
+  const nlp = AC.createBiquadFilter(); nlp.type = 'lowpass'; nlp.frequency.value = 240;
+  const gain = AC.createGain(); gain.gain.value = 0;
+  const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  o.connect(gain); n.connect(nlp); nlp.connect(gain);
+  if (pan) { gain.connect(pan); pan.connect(master); } else { gain.connect(master); }
+  o.start(); n.start();
+  return { gain, pan, stopNodes: [o, n] };
+}
+
+// pitch from vertical offset: above you = higher. ~1.8 octaves of room.
+function pitchFor(rel) { return 235 * Math.pow(2, -rel * 1.8); }
+
+function spatialize(v, pos, dt) {
+  const p = S.player, t = AC.currentTime;
+  const d = dist(p, pos);
+  const reach = Math.hypot(W, H) * 0.72;
+  const near = Math.max(0, 1 - d / reach);
+  const rel = pos.y - p.y; // + means below player
+  v.o1.frequency.setTargetAtTime(pitchFor(rel), t, 0.06);
+  v.o2.frequency.setTargetAtTime(pitchFor(rel), t, 0.06);
+  v.gain.gain.setTargetAtTime(0.045 + near * near * 0.46, t, 0.09);
+  v.lp.frequency.setTargetAtTime(480 + near * near * 5200, t, 0.09);
+  if (v.pan) v.pan.pan.setTargetAtTime(
+    Math.max(-1, Math.min(1, (pos.x - p.x) * W / (W * 0.45))), t, 0.06);
+  // shimmer wakes inside three capture-radii: the "almost there" halo
+  const cap = captureR();
+  const close = Math.max(0, 1 - d / (cap * 3));
+  v.sh.frequency.setTargetAtTime(pitchFor(rel) * 3, t, 0.06);
+  v.shG.gain.setTargetAtTime(close * close * 0.075 *
+    (0.6 + 0.4 * Math.sin(performance.now() / 70)), t, 0.05);
+}
+
+function captureR() { return MIN * 0.075; }
+
+function chime(basePitch) {
+  const t0 = AC.currentTime;
+  [1, 1.25, 1.5, 2].forEach((r, i) => {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sine'; o.frequency.value = basePitch * r;
+    g.gain.setValueAtTime(0, t0 + i * 0.09);
+    g.gain.linearRampToValueAtTime(0.22, t0 + i * 0.09 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + i * 0.09 + 1.1);
+    o.connect(g); g.connect(master);
+    o.start(t0 + i * 0.09); o.stop(t0 + i * 0.09 + 1.2);
+  });
+}
+
+function thud() {
+  const t0 = AC.currentTime;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(120, t0);
+  o.frequency.exponentialRampToValueAtTime(38, t0 + 0.25);
+  g.gain.setValueAtTime(0.6, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.3);
+  o.connect(g); g.connect(master); o.start(t0); o.stop(t0 + 0.35);
+  const nbuf = AC.createBuffer(1, AC.sampleRate * 0.25, AC.sampleRate);
+  const d = nbuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const n = AC.createBufferSource(); n.buffer = nbuf;
+  const ng = AC.createGain(); ng.gain.value = 0.35;
+  n.connect(ng); ng.connect(master); n.start(t0);
+}
+
+function crack() { // false twin dissolving: dry, short, unrewarding
+  const t0 = AC.currentTime;
+  const nbuf = AC.createBuffer(1, AC.sampleRate * 0.12, AC.sampleRate);
+  const d = nbuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const n = AC.createBufferSource(); n.buffer = nbuf;
+  const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+  const g = AC.createGain(); g.gain.value = 0.3;
+  n.connect(hp); hp.connect(g); g.connect(master); n.start(t0);
+}
+
+function footstep() {
+  const t0 = AC.currentTime;
+  const nbuf = AC.createBuffer(1, AC.sampleRate * 0.05, AC.sampleRate);
+  const d = nbuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const n = AC.createBufferSource(); n.buffer = nbuf;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+  const g = AC.createGain(); g.gain.value = 0.10;
+  n.connect(lp); lp.connect(g); g.connect(master); n.start(t0);
+}
+
+// ---------- rounds ----------
+function placeAwayFromPlayer(minFrac) {
+  const p = S.player;
+  for (let i = 0; i < 60; i++) {
+    const c = { x: rnd(0.12, 0.88), y: rnd(0.12, 0.88) };
+    if (dist(p, c) > MIN * minFrac) return c;
+  }
+  return { x: rnd(0.12, 0.88), y: rnd(0.12, 0.88) };
+}
+
+function startRound() {
+  const r = S.round;
+  S.target = Object.assign(placeAwayFromPlayer(0.5), { drift: r >= 7 });
+  killVoice(voice); voice = makeVoice(false);
+
+  killVoice(twinVoice); twinVoice = null; S.twin = null;
+  if (r >= 10) {
+    S.twin = placeAwayFromPlayer(0.4);
+    twinVoice = makeVoice(true);
+  }
+
+  growls.forEach(killVoice); growls = []; S.hazards = [];
+  const nHaz = r < 4 ? 0 : r < 8 ? 1 : r < 12 ? 2 : 3;
+  for (let i = 0; i < nHaz; i++) {
+    // roughly on the way to the target, jittered off the line
+    const t = rnd(0.4, 0.72);
+    const h = {
+      x: S.player.x + (S.target.x - S.player.x) * t + rnd(-0.14, 0.14),
+      y: S.player.y + (S.target.y - S.player.y) * t + rnd(-0.14, 0.14),
+    };
+    h.x = Math.min(0.92, Math.max(0.08, h.x));
+    h.y = Math.min(0.92, Math.max(0.08, h.y));
+    if (dist(h, S.target) < captureR() * 2.5 || dist(h, S.player) < captureR() * 3) { i--; continue; }
+    S.hazards.push(h);
+    growls.push(makeGrowl());
+  }
+}
+
+function catchTarget() {
+  const t = px(S.target);
+  const rel = S.target.y - S.player.y;
+  chime(pitchFor(rel));
+  if (navigator.vibrate) navigator.vibrate(35);
+  S.stars.push({ x: S.target.x, y: S.target.y, born: performance.now() });
+  S.glow = { x: t.x, y: t.y, t: 0 };
+  S.round++;
+  document.getElementById('hint').style.opacity = 0;
+  startRound();
+}
+
+// ---------- input: relative drag = drift ----------
+const stick = { on: false, ox: 0, oy: 0, dx: 0, dy: 0 };
+const keys = {};
+cv.addEventListener('pointerdown', e => {
+  stick.on = true; stick.ox = e.clientX; stick.oy = e.clientY; stick.dx = stick.dy = 0;
+});
+cv.addEventListener('pointermove', e => {
+  if (!stick.on) return;
+  stick.dx = e.clientX - stick.ox; stick.dy = e.clientY - stick.oy;
+});
+const stickOff = () => { stick.on = false; stick.dx = stick.dy = 0; };
+cv.addEventListener('pointerup', stickOff);
+cv.addEventListener('pointercancel', stickOff);
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+// ---------- start ----------
+document.getElementById('veil').addEventListener('pointerdown', () => {
+  if (S.started) return;
+  S.started = true;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = 0.9; master.connect(AC.destination);
+  AC.resume();
+  document.getElementById('veil').classList.add('gone');
+  setTimeout(() => { document.getElementById('hint').style.opacity = 0.9; }, 1800);
+  setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 9000);
+  startRound();
+});
+document.addEventListener('visibilitychange', () => {
+  if (!AC) return;
+  if (document.hidden) AC.suspend(); else AC.resume();
+});
+
+// ---------- loop ----------
+let lastT = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+  if (S.started && AC) step(dt, now);
+  draw(now);
+}
+requestAnimationFrame(frame);
+
+function step(dt, now) {
+  const p = S.player;
+
+  // intent
+  let ix = 0, iy = 0;
+  if (stick.on) {
+    const len = Math.hypot(stick.dx, stick.dy);
+    if (len > 4) {
+      const s = Math.min(1, len / 64);
+      ix = stick.dx / len * s; iy = stick.dy / len * s;
+    }
+  }
+  if (keys['arrowleft'] || keys['a']) ix -= 1;
+  if (keys['arrowright'] || keys['d']) ix += 1;
+  if (keys['arrowup'] || keys['w']) iy -= 1;
+  if (keys['arrowdown'] || keys['s']) iy += 1;
+  const il = Math.hypot(ix, iy); if (il > 1) { ix /= il; iy /= il; }
+
+  const speed = 0.28; // screens per second
+  if (S.stun > 0) { S.stun -= dt; ix = iy = 0; }
+  p.vx += (ix * speed - p.vx) * Math.min(1, dt * 8);
+  p.vy += (iy * speed - p.vy) * Math.min(1, dt * 8);
+  p.x = Math.min(0.97, Math.max(0.03, p.x + p.vx * dt));
+  p.y = Math.min(0.97, Math.max(0.03, p.y + p.vy * dt));
+
+  // footsteps while drifting
+  if (Math.hypot(p.vx, p.vy) > 0.06 && now - S.lastStep > 300) {
+    footstep(); S.lastStep = now;
+  }
+
+  // target drift (later rounds): slow wander
+  if (S.target && S.target.drift) {
+    S.target.x += Math.sin(now / 3100) * 0.028 * dt;
+    S.target.y += Math.cos(now / 4300) * 0.028 * dt;
+    S.target.x = Math.min(0.9, Math.max(0.1, S.target.x));
+    S.target.y = Math.min(0.9, Math.max(0.1, S.target.y));
+  }
+
+  // sound the world
+  if (voice && S.target) spatialize(voice, S.target, dt);
+  if (twinVoice && S.twin) spatialize(twinVoice, S.twin, dt);
+  S.hazards.forEach((h, i) => {
+    const v = growls[i]; if (!v) return;
+    const d = dist(p, h);
+    const reach = Math.hypot(W, H) * 0.45;
+    const near = Math.max(0, 1 - d / reach);
+    const t = AC.currentTime;
+    v.gain.gain.setTargetAtTime(near * near * 0.5, t, 0.09);
+    if (v.pan) v.pan.pan.setTargetAtTime(
+      Math.max(-1, Math.min(1, (h.x - p.x) * W / (W * 0.45))), t, 0.06);
+  });
+
+  // collisions
+  const cap = captureR();
+  if (S.twin && dist(p, S.twin) < cap) {
+    crack();
+    killVoice(twinVoice); twinVoice = null; S.twin = null; // the burr was never real
+  }
+  if (S.target && dist(p, S.target) < cap) { catchTarget(); return; }
+  for (const h of S.hazards) {
+    if (dist(p, h) < cap * 0.9 && S.stun <= 0) {
+      thud();
+      if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+      const ang = Math.atan2(p.y - h.y, p.x - h.x);
+      p.vx = Math.cos(ang) * 0.5; p.vy = Math.sin(ang) * 0.5;
+      S.stun = 0.45;
+    }
+  }
+}
+
+// ---------- draw: almost nothing, on purpose ----------
+function draw(now) {
+  g2.fillStyle = '#000';
+  g2.fillRect(0, 0, W, H);
+
+  // the constellation of everywhere you've heard
+  for (const s of S.stars) {
+    const age = (now - s.born) / 1000;
+    const a = Math.min(0.16, 0.5 / (1 + age * 0.6)) + 0.05;
+    g2.fillStyle = `rgba(235,230,215,${a.toFixed(3)})`;
+    const q = px(s);
+    g2.fillRect(q.x - 1, q.y - 1, 2, 2);
+  }
+
+  // catch ripple: one breath of light where the sound was
+  if (S.glow) {
+    S.glow.t += 1 / 60;
+    const r = S.glow.t * MIN * 0.5;
+    const a = Math.max(0, 0.25 - S.glow.t * 0.35);
+    if (a <= 0) S.glow = null;
+    else {
+      g2.strokeStyle = `rgba(235,230,215,${a.toFixed(3)})`;
+      g2.lineWidth = 1;
+      g2.beginPath(); g2.arc(S.glow.x, S.glow.y, r, 0, Math.PI * 2); g2.stroke();
+    }
+  }
+
+  // you: a breath-dim point, just enough to know you exist
+  if (S.started) {
+    const q = px(S.player);
+    const breathe = 0.05 + 0.02 * Math.sin(now / 900);
+    g2.fillStyle = `rgba(235,230,215,${breathe.toFixed(3)})`;
+    g2.beginPath(); g2.arc(q.x, q.y, 2.5, 0, Math.PI * 2); g2.fill();
+  }
+}
+</script>

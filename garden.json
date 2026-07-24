@@ -9,7 +9,7 @@
     "a1": { "stage": 2, "title": "The Narrow Beam", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable beam: five sounding places, one shy thing you can't hear while looking at", "door": "plots/a1/growth/index.html" },
     "b1": { "stage": 2, "title": "Didn't You Notice", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable flicker: tap the change the blink swallowed; some rounds only the sound changes", "door": "plots/b1/growth/index.html", "plant": "crystal" },
     "c1": { "stage": 2, "title": "One Thing", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable binding toy: drag colour and voice onto the wandering form; the almost-zone audibly beats", "door": "plots/c1/growth/index.html" },
-    "d1": { "stage": 1, "title": "Seeing With Your Ears", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
+    "d1": { "stage": 2, "title": "Seeing With Your Ears", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable dark room: one humming voice, pan/pitch/loudness for place; each catch lights a star", "door": "plots/d1/growth/index.html", "plant": "kelp" },
     "a2": { "stage": 1, "title": "Trust the Feeling", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "b2": { "stage": 1, "title": "Below the Line", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "c2": { "stage": 1, "title": "The Guessing Machine", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
