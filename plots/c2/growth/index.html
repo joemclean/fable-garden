@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>The Guessing Machine</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#080a10;
+    font-family:Georgia,'Times New Roman',serif;color:#cfd6e4;
+    -webkit-tap-highlight-color:transparent;touch-action:none;
+    user-select:none;-webkit-user-select:none}
+  canvas{position:fixed;inset:0;touch-action:none}
+  #title{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;transition:opacity 1.3s ease;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 42%,rgba(20,26,44,.55),rgba(8,10,16,.92))}
+  #title h1{margin:0;font-weight:normal;font-style:italic;font-size:clamp(26px,7.5vw,42px);
+    letter-spacing:.05em;color:#e8ecf5;text-shadow:0 0 24px rgba(120,150,255,.35)}
+  #title p{margin:0;font-size:15px;color:#93a0ba;animation:breathe 2.6s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.45}50%{opacity:.95}}
+  #hint{position:fixed;left:24px;right:24px;bottom:17%;text-align:center;font-style:italic;
+    font-size:15.5px;color:#a9b7cf;opacity:0;transition:opacity .9s;pointer-events:none;
+    text-shadow:0 1px 8px rgba(0,0,0,.8)}
+  #stat{position:fixed;left:24px;right:24px;bottom:9.5%;text-align:center;font-size:13px;
+    letter-spacing:.06em;color:#8892a8;opacity:0;transition:opacity 2.5s;pointer-events:none}
+  #back{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);font-size:12px;
+    color:#5a6a85;opacity:.6;text-decoration:none;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="title"><h1>The Guessing Machine</h1><p>touch to begin</p></div>
+<div id="hint"></div>
+<div id="stat"></div>
+<a id="back" href="../../../viewer/">&#10229; the garden</a>
+<script>
+'use strict';
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+const titleEl=document.getElementById('title'),hintEl=document.getElementById('hint'),
+      statEl=document.getElementById('stat'),backEl=document.getElementById('back');
+let W=0,H=0;
+function resize(){const d=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  cv.width=Math.round(W*d);cv.height=Math.round(H*d);g.setTransform(d,0,0,d,0,0);}
+addEventListener('resize',resize);resize();
+
+const N=8;
+// A minor pentatonic, ascending clockwise from the top stone
+const FREQS=[220,261.63,293.66,329.63,392,440,523.25,587.33];
+const hue=i=>265-i*28;
+// the truth: which stone sounds on each of the 8 beats. Mostly a climb, two skips.
+let truthSeq=[0,1,2,4,2,5,6,7];
+// the machine's (and roughly the player's) last-confirmed model of the truth
+let modelSeq=truthSeq.slice();
+
+let state='idle';
+let ac=null,master=null,padGain=null,padLp=null,noiseBuf=null;
+const BEAT=60/112;
+let nextBeatT=0,seqPos=0,playLoops=0,watchLoopsLeft=2;
+let pendingTap=null,whisperDone=false,tapsMade=0;
+let vivid=.3;                 // how much of the render prediction is currently buying
+let curStone=0,move=null;
+let trail=[],flashes=[],parts=[],pendingErrs=[];
+let acts=new Array(N).fill(0);
+let hotEdges=new Set();       // seq indices recently corrected — glow until re-earned
+let shake=0,redFlash=0;
+let total=0,supplied=0,coastRun=0,errorsSeen=0;
+let lastFrame=0;
+
+function tNow(){return ac?ac.currentTime:performance.now()/1000;}
+function stonePos(i){const R=Math.min(W,H)*.345,cx=W/2,cy=H*.44,a=-Math.PI/2+i*2*Math.PI/N;
+  return [cx+R*Math.cos(a),cy+R*Math.sin(a)];}
+
+let hintTimer=null;
+function hint(s,sticky){hintEl.textContent=s;hintEl.style.opacity=s?1:0;
+  if(hintTimer){clearTimeout(hintTimer);hintTimer=null;}
+  if(s&&!sticky)hintTimer=setTimeout(()=>{hintEl.style.opacity=0;},4600);}
+
+/* ------------------------------ audio ------------------------------ */
+function initAudio(){
+  ac=new (window.AudioContext||window.webkitAudioContext)();
+  master=ac.createGain();master.gain.value=.9;
+  const comp=ac.createDynamicsCompressor();comp.threshold.value=-16;
+  master.connect(comp);comp.connect(ac.destination);
+  noiseBuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate);
+  const ch=noiseBuf.getChannelData(0);
+  for(let i=0;i<ch.length;i++)ch[i]=Math.random()*2-1;
+  padGain=ac.createGain();padGain.gain.value=0;
+  padLp=ac.createBiquadFilter();padLp.type='lowpass';padLp.frequency.value=300;padLp.Q.value=.7;
+  const o1=ac.createOscillator(),o2=ac.createOscillator(),o3=ac.createOscillator();
+  o1.type='sawtooth';o1.frequency.value=110;
+  o2.type='sawtooth';o2.frequency.value=110.7;
+  o3.type='sine';o3.frequency.value=55;
+  const g3=ac.createGain();g3.gain.value=.6;
+  o1.connect(padLp);o2.connect(padLp);o3.connect(g3);g3.connect(padLp);
+  padLp.connect(padGain);padGain.connect(master);
+  o1.start();o2.start();o3.start();
+  padGain.gain.setTargetAtTime(.05,ac.currentTime,2.5);
+}
+function pluck(stone,vel,dull,when){
+  const t=when||ac.currentTime,f=FREQS[stone];
+  const o=ac.createOscillator();o.type='triangle';o.frequency.value=f;
+  const o2=ac.createOscillator();o2.type='sine';o2.frequency.value=f*2;
+  const g2=ac.createGain();g2.gain.value=.3*(1-dull);
+  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.Q.value=.5;
+  lp.frequency.setValueAtTime(600+(1-dull)*(1400+2200*vel),t);
+  lp.frequency.exponentialRampToValueAtTime(480,t+.5);
+  const env=ac.createGain();
+  env.gain.setValueAtTime(0,t);
+  env.gain.linearRampToValueAtTime(.3*vel,t+.007);
+  env.gain.exponentialRampToValueAtTime(.0008,t+.5+.3*vel);
+  o.connect(lp);o2.connect(g2);g2.connect(lp);lp.connect(env);env.connect(master);
+  o.start(t);o2.start(t);o.stop(t+1);o2.stop(t+1);
+  // a confident world fills itself in — a fifth appears that nobody played
+  if(vivid>.78&&vel>.6){
+    const o5=ac.createOscillator();o5.type='sine';o5.frequency.value=f*1.5;
+    const e5=ac.createGain();e5.gain.setValueAtTime(0,t);
+    e5.gain.linearRampToValueAtTime(.05*vel,t+.02);
+    e5.gain.exponentialRampToValueAtTime(.0006,t+.7);
+    o5.connect(e5);e5.connect(master);o5.start(t);o5.stop(t+.9);
+  }
+}
+function whisper(stone){
+  const t=ac.currentTime,o=ac.createOscillator();
+  o.type='sine';o.frequency.value=FREQS[stone];
+  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=900;
+  const env=ac.createGain();
+  env.gain.setValueAtTime(0,t);
+  env.gain.linearRampToValueAtTime(.045,t+.02);
+  env.gain.linearRampToValueAtTime(0,t+.13);
+  o.connect(lp);lp.connect(env);env.connect(master);
+  o.start(t);o.stop(t+.15);
+}
+function tick(){
+  const t=ac.currentTime,src=ac.createBufferSource();src.buffer=noiseBuf;
+  const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=5200;
+  const env=ac.createGain();env.gain.setValueAtTime(.014+.02*vivid,t);
+  env.gain.exponentialRampToValueAtTime(.0005,t+.03);
+  src.connect(hp);hp.connect(env);env.connect(master);src.start(t);src.stop(t+.05);
+}
+function padPulse(){
+  padGain.gain.cancelScheduledValues(ac.currentTime);
+  padGain.gain.setTargetAtTime(.075,ac.currentTime,.02);
+  padGain.gain.setTargetAtTime(.05,ac.currentTime+.06,.12);
+}
+function stab(stone,sev){
+  const t=ac.currentTime,f=FREQS[stone];
+  const o1=ac.createOscillator(),o2=ac.createOscillator();
+  o1.type='sawtooth';o1.frequency.value=f;
+  o2.type='sawtooth';o2.frequency.value=f*16/15;
+  const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1000;bp.Q.value=1.1;
+  const env=ac.createGain();env.gain.setValueAtTime(.0001,t);
+  env.gain.exponentialRampToValueAtTime(.05+.15*sev,t+.02);
+  env.gain.exponentialRampToValueAtTime(.0008,t+.38+.35*sev);
+  o1.connect(bp);o2.connect(bp);bp.connect(env);env.connect(master);
+  o1.start(t);o2.start(t);o1.stop(t+1);o2.stop(t+1);
+  const src=ac.createBufferSource();src.buffer=noiseBuf;src.playbackRate.value=.8;
+  const lp2=ac.createBiquadFilter();lp2.type='lowpass';lp2.frequency.value=2400;
+  const ne=ac.createGain();ne.gain.setValueAtTime(.1*sev+.02,t);
+  ne.gain.exponentialRampToValueAtTime(.0006,t+.16);
+  src.connect(lp2);lp2.connect(ne);ne.connect(master);src.start(t);src.stop(t+.2);
+  pluck(stone,.5,.15,t+.34); // the world, corrected
+}
+
+/* ------------------------------ game ------------------------------ */
+function begin(){
+  initAudio();
+  if(ac.state==='suspended')ac.resume();
+  state='watch';watchLoopsLeft=2;seqPos=0;
+  nextBeatT=ac.currentTime+.9;
+  titleEl.style.opacity='0';
+  setTimeout(()=>{titleEl.style.display='none';},1500);
+  hint('watch — the machine repeats its round',true);
+}
+function startMove(s){move={from:curStone,to:s,t0:tNow(),dur:.13};}
+function land(s,vel,dull){
+  pluck(s,vel,dull);
+  acts[s]=1;
+  trail.push({a:curStone,b:s,t0:tNow(),v:Math.max(.25,vivid)});
+  if(trail.length>50)trail.shift();
+  if(!move||move.to!==s)startMove(s);
+  curStone=s;
+}
+function mutate(){
+  const i=Math.floor(Math.random()*N);
+  let v;do{v=Math.floor(Math.random()*N);}while(v===truthSeq[i]);
+  truthSeq[i]=v;
+}
+function fireError(e){
+  stab(e.truth,e.sev);
+  const[x,y]=stonePos(e.truth),[wx,wy]=stonePos(e.from);
+  flashes.push({x,y,t0:tNow(),sev:e.sev});
+  for(let k=0;k<14;k++){const a=Math.random()*Math.PI*2,sp=40+Math.random()*130;
+    parts.push({x:wx,y:wy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,t0:tNow(),life:.5+Math.random()*.4});}
+  shake=Math.min(1,shake+.35+.45*e.sev);
+  redFlash=Math.min(1,redFlash+.6*e.sev);
+  vivid=Math.max(.05,vivid-.3*e.sev);
+  hotEdges.add(e.idx);
+  errorsSeen++;
+  curStone=e.truth;move={from:e.from,to:e.truth,t0:tNow(),dur:.1};
+  trail.push({a:e.from,b:e.truth,t0:tNow(),v:1,err:true});
+  acts[e.truth]=1;
+  if(errorsSeen===1)hint('that sting — your guess, corrected');
+  else if(errorsSeen===3)hint('just before each beat, the truth whispers');
+}
+function resolveBeat(){
+  const i=seqPos,truth=truthSeq[i];
+  tick();padPulse();
+  if(state==='watch'){
+    land(truth,.45,.2);
+  }else{
+    total++;
+    if(pendingTap){
+      supplied++;coastRun=0;
+      const conf=Math.min(1,Math.max(0,(nextBeatT-pendingTap.time)/BEAT));
+      const s=pendingTap.stone;
+      land(s,.5+.3*conf,conf<.25?.5:.1);
+      if(s===truth){
+        vivid=Math.min(1,vivid+(conf>.45?.085:.04));
+        hotEdges.delete(i);
+      }else{
+        pendingErrs.push({at:nextBeatT+.16,truth:truth,idx:i,sev:.55+.45*conf,from:s});
+      }
+    }else{
+      coastRun++;
+      const s=modelSeq[i];
+      land(s,.22,.75);
+      vivid=Math.max(.06,vivid-.045);
+      if(s!==truth)pendingErrs.push({at:nextBeatT+.16,truth:truth,idx:i,sev:1,from:s});
+      if(coastRun===5)hint('tap the stone you expect next');
+    }
+    modelSeq[i]=truth;
+  }
+  pendingTap=null;whisperDone=false;
+  seqPos=(seqPos+1)%N;
+  nextBeatT+=BEAT;
+  if(seqPos===0){
+    if(state==='watch'){
+      watchLoopsLeft--;
+      if(watchLoopsLeft<=0){state='play';hint('now you — tap the stone you expect next',true);}
+    }else{
+      playLoops++;
+      if(playLoops%3===0)mutate();
+    }
+  }
+  if(total>=24){
+    statEl.textContent='most of this world, you supplied — '+
+      Math.round(100*supplied/Math.max(1,total))+'%';
+    statEl.style.opacity='.9';
+  }
+}
+function logic(){
+  if(!ac||state==='idle')return;
+  const t=ac.currentTime;
+  for(let i=pendingErrs.length-1;i>=0;i--)
+    if(t>=pendingErrs[i].at){const e=pendingErrs.splice(i,1)[0];fireError(e);}
+  if(t-nextBeatT>2*BEAT){ // came back from a stall — re-anchor, don't machine-gun
+    nextBeatT=t+BEAT;pendingTap=null;whisperDone=false;return;
+  }
+  if(state==='play'&&!whisperDone&&t>=nextBeatT-.14){
+    whisperDone=true;whisper(truthSeq[seqPos]);
+  }
+  if(t>=nextBeatT)resolveBeat();
+}
+
+addEventListener('pointerdown',e=>{
+  if(e.target===backEl)return;
+  if(state==='idle'){begin();return;}
+  if(state!=='play'||!ac)return;
+  let best=0,bd=Infinity;
+  for(let i=0;i<N;i++){const p=stonePos(i),d=(p[0]-e.clientX)**2+(p[1]-e.clientY)**2;
+    if(d<bd){bd=d;best=i;}}
+  pendingTap={stone:best,time:ac.currentTime};
+  acts[best]=Math.max(acts[best],.55);
+  startMove(best);
+  tapsMade++;if(tapsMade===6)hint('');
+});
+document.addEventListener('visibilitychange',()=>{
+  if(!ac)return;
+  if(document.hidden){ac.suspend();}
+  else{ac.resume();nextBeatT=ac.currentTime+BEAT;pendingTap=null;whisperDone=false;}
+});
+
+/* ------------------------------ render ------------------------------ */
+function render(){
+  const t=tNow();
+  const dt=Math.min(.05,Math.max(.001,t-lastFrame));lastFrame=t;
+  g.clearRect(0,0,W,H);
+  const bg=g.createRadialGradient(W/2,H*.44,0,W/2,H*.44,Math.max(W,H)*.75);
+  bg.addColorStop(0,'rgb('+(16+10*vivid|0)+','+(20+12*vivid|0)+','+(34+22*vivid|0)+')');
+  bg.addColorStop(1,'rgb(6,7,12)');
+  g.fillStyle=bg;g.fillRect(0,0,W,H);
+  g.save();
+  if(shake>.01){g.translate((Math.random()*2-1)*9*shake,(Math.random()*2-1)*9*shake);shake*=.86;}
+  else shake=0;
+  // trail — the path the render took (true or hallucinated alike)
+  for(const s of trail){
+    const age=t-s.t0,al=(s.err?.55:.4*s.v)*(1-age/6);
+    if(al<=0)continue;
+    const a=stonePos(s.a),b=stonePos(s.b);
+    g.strokeStyle=s.err?'rgba(255,86,70,'+al+')'
+      :'hsla('+hue(s.b)+','+(45+40*vivid)+'%,65%,'+al+')';
+    g.lineWidth=s.err?2.4:1.6;
+    g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();
+  }
+  trail=trail.filter(s=>t-s.t0<6);
+  // corrected edges glow until re-earned
+  for(const i of hotEdges){
+    const a=stonePos(truthSeq[(i+N-1)%N]),b=stonePos(truthSeq[i]);
+    g.strokeStyle='rgba(255,160,90,'+(.2+.13*Math.sin(t*5.5))+')';
+    g.lineWidth=2.2;g.setLineDash([5,7]);
+    g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();g.setLineDash([]);
+  }
+  // ghosts — the model running ahead of the world
+  if(state==='play'){
+    const g1=modelSeq[seqPos],g2=modelSeq[(seqPos+1)%N];
+    const c=stonePos(curStone),p1=stonePos(g1),p2=stonePos(g2);
+    const gal=.07+.16*vivid;
+    g.strokeStyle='rgba(190,205,255,'+gal+')';g.lineWidth=1.2;
+    g.beginPath();g.moveTo(c[0],c[1]);g.lineTo(p1[0],p1[1]);g.stroke();
+    g.beginPath();g.arc(p1[0],p1[1],Math.min(W,H)*.036,0,7);g.stroke();
+    g.strokeStyle='rgba(190,205,255,'+gal*.45+')';
+    g.beginPath();g.arc(p2[0],p2[1],Math.min(W,H)*.03,0,7);g.stroke();
+  }
+  // stones
+  for(let i=0;i<N;i++){
+    acts[i]=Math.max(0,acts[i]-dt*1.5);
+    const p=stonePos(i),a=acts[i],h=hue(i);
+    const R=Math.min(W,H)*(.026+.013*a);
+    const sat=38+48*vivid,gl=.16+.55*a+.12*vivid;
+    const gr=g.createRadialGradient(p[0],p[1],0,p[0],p[1],R*4.2);
+    gr.addColorStop(0,'hsla('+h+','+sat+'%,'+(56+16*a)+'%,'+gl+')');
+    gr.addColorStop(1,'hsla(0,0%,0%,0)');
+    g.fillStyle=gr;g.beginPath();g.arc(p[0],p[1],R*4.2,0,7);g.fill();
+    g.fillStyle='hsla('+h+','+sat+'%,'+(60+22*a)+'%,'+(.7+.3*a)+')';
+    g.beginPath();g.arc(p[0],p[1],R,0,7);g.fill();
+  }
+  // spark
+  if(state!=='idle'){
+    let sx,sy;
+    if(move){const k=Math.min(1,(t-move.t0)/move.dur),ez=1-Math.pow(1-k,3);
+      const a=stonePos(move.from),b=stonePos(move.to);
+      sx=a[0]+(b[0]-a[0])*ez;sy=a[1]+(b[1]-a[1])*ez;}
+    else{const p=stonePos(curStone);sx=p[0];sy=p[1];}
+    const ph=Math.max(0,Math.min(1,1-(nextBeatT-t)/BEAT));
+    const pr=Math.min(W,H)*(.016+.008*Math.sin(ph*Math.PI));
+    const sg=g.createRadialGradient(sx,sy,0,sx,sy,pr*5);
+    sg.addColorStop(0,'rgba(255,250,235,'+(.5+.3*vivid)+')');
+    sg.addColorStop(1,'rgba(255,250,235,0)');
+    g.fillStyle=sg;g.beginPath();g.arc(sx,sy,pr*5,0,7);g.fill();
+    g.fillStyle='rgba(255,252,244,.95)';g.beginPath();g.arc(sx,sy,pr,0,7);g.fill();
+  }
+  // error flashes
+  for(const f of flashes){
+    const k=(t-f.t0)/.45;if(k>1)continue;
+    g.strokeStyle='rgba(255,90,70,'+((1-k)*.75*f.sev+.1)+')';
+    g.lineWidth=3*(1-k)+1;
+    g.beginPath();g.arc(f.x,f.y,14+230*k,0,7);g.stroke();
+    if(k<.25){g.fillStyle='rgba(255,230,220,'+((1-k/.25)*.5)+')';
+      g.beginPath();g.arc(f.x,f.y,18,0,7);g.fill();}
+  }
+  flashes=flashes.filter(f=>t-f.t0<.5);
+  // shatter particles
+  for(const p of parts){
+    const age=t-p.t0;if(age>p.life)continue;
+    p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.97;p.vy*=.97;
+    g.fillStyle='rgba(255,140,110,'+((1-age/p.life)*.7)+')';
+    g.fillRect(p.x,p.y,2,2);
+  }
+  parts=parts.filter(p=>t-p.t0<p.life);
+  // grain — the world runs thin when prediction is starved
+  if(vivid<.55){
+    const n=Math.floor((.55-vivid)*200);
+    g.fillStyle='rgba(200,212,255,.05)';
+    for(let k=0;k<n;k++)g.fillRect(Math.random()*W,Math.random()*H,1,1);
+  }
+  g.restore();
+  if(redFlash>.01){g.fillStyle='rgba(255,58,40,'+(.15*redFlash)+')';
+    g.fillRect(0,0,W,H);redFlash*=.88;}
+  else redFlash=0;
+  if(padLp)padLp.frequency.value+=(260+1100*vivid-padLp.frequency.value)*.04;
+}
+function frame(){logic();render();requestAnimationFrame(frame);}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
