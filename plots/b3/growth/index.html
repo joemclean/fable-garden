@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0c0e11">
+<title>Two Minds</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; overflow:hidden; background:#0c0e11;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    touch-action:none; }
+  body { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  #stage { position:fixed; inset:0; height:100vh; height:100dvh; display:flex; }
+
+  .half { width:50%; height:100%; position:relative; overflow:hidden; }
+  #halfL { background:#161009; color:#e0a95f; }
+  #halfR { background:#0a1216; color:#8ecbe0; }
+
+  #seam { position:absolute; left:calc(50% - 1px); top:0; width:2px; height:100%;
+    z-index:5; background:linear-gradient(#c9b89a, #c9b89a); opacity:.85;
+    transition: opacity .4s; }
+  #seam.cut { background:repeating-linear-gradient(
+      to bottom, #3a3630 0 7px, transparent 7px 14px); opacity:.5; }
+
+  /* fixation dots */
+  .dot { position:absolute; bottom:9%; left:50%; transform:translateX(-50%);
+    width:52px; height:52px; border-radius:50%; border:2px solid currentColor;
+    opacity:.55; z-index:8; }
+  .dot::after { content:''; position:absolute; inset:18px; border-radius:50%;
+    background:currentColor; opacity:.7; }
+  .dot.pulse { animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:.9} }
+  .dot.held { opacity:1; box-shadow:0 0 18px currentColor; animation:none; }
+  #dotC { position:fixed; left:50%; bottom:9%; transform:translateX(-50%);
+    width:52px; height:52px; border-radius:50%; border:2px solid #c9b89a;
+    color:#c9b89a; z-index:40; opacity:.6; }
+  #dotC::after { content:''; position:absolute; inset:18px; border-radius:50%;
+    background:currentColor; opacity:.7; }
+  #dotC.pulse { animation:pulse 1.6s ease-in-out infinite; }
+  #dotC.held { opacity:1; box-shadow:0 0 18px #c9b89a; animation:none; }
+
+  /* stimulus */
+  .glyphbox { position:absolute; top:34%; left:50%; transform:translate(-50%,-50%);
+    width:38vmin; height:38vmin; max-width:220px; max-height:220px;
+    display:none; z-index:6; }
+  .glyphbox.show { display:block; animation:flashin .12s ease-out; }
+  .glyphbox svg { width:100%; height:100%; }
+  @keyframes flashin { from{ transform:translate(-50%,-50%) scale(.6); opacity:0 } }
+
+  /* answers */
+  .answers { position:absolute; bottom:20%; left:50%; transform:translateX(-50%);
+    display:none; grid-template-columns:1fr 1fr; gap:10px; z-index:9; }
+  .answers.show { display:grid; }
+  .abtn { min-width:64px; min-height:58px; padding:8px 10px;
+    border:1.5px solid currentColor; border-radius:10px; background:transparent;
+    color:inherit; font:inherit; font-size:14px; letter-spacing:.08em;
+    display:flex; align-items:center; justify-content:center; opacity:.85; }
+  .abtn svg { width:34px; height:34px; }
+  .abtn.chosen { background:currentColor; opacity:1; }
+  .abtn.chosen svg, #ansR .abtn.chosen { color:inherit; }
+  #halfL .abtn.chosen svg { color:#161009; }
+  #halfR .abtn.chosen { color:#0a1216; background:#8ecbe0; }
+  .answers.locked .abtn:not(.chosen) { opacity:.25; }
+
+  /* prompts + verdict */
+  #promptR { position:absolute; top:56%; left:8%; right:8%; z-index:7;
+    font-size:13px; line-height:1.55; letter-spacing:.03em; opacity:0;
+    transition:opacity .3s; }
+  #promptR.show { opacity:.95; }
+  #promptL { position:absolute; top:56%; left:0; right:0; text-align:center;
+    font-size:34px; opacity:0; transition:opacity .3s; z-index:7; }
+  #promptL.show { opacity:.8; animation:pulse 1.6s ease-in-out infinite; }
+
+  #verdictL { position:absolute; top:52%; left:0; right:0; display:none;
+    justify-content:center; align-items:center; gap:14px; z-index:7; }
+  #verdictL.show { display:flex; }
+  #verdictL .slot { width:44px; height:44px; opacity:.9; }
+  #verdictL .slot svg { width:100%; height:100%; }
+  #verdictL .sep { width:6px; height:6px; border-radius:50%;
+    background:currentColor; opacity:.5; }
+  #verdictL.match .slot { filter:drop-shadow(0 0 8px #e0a95f); }
+
+  #counterR { position:absolute; top:12px; right:14px; font-size:11px;
+    opacity:.5; z-index:7; letter-spacing:.1em; }
+  #pipsL { position:absolute; top:16px; left:14px; display:flex; gap:5px; z-index:7; }
+  #pipsL i { width:6px; height:6px; border-radius:50%; border:1px solid currentColor;
+    opacity:.4; }
+  #pipsL i.done { background:currentColor; opacity:.8; }
+
+  /* overlays (title / end) — before the cut and after the rounds,
+     the skull speaks as one, so words may span both halves */
+  .overlay { position:fixed; inset:0; z-index:30; background:rgba(10,11,14,.96);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; color:#cfd6cf; padding:24px; transition:opacity .6s; }
+  .overlay.gone { opacity:0; pointer-events:none; }
+  .overlay h1 { font-size:30px; letter-spacing:.28em; font-weight:normal;
+    margin-bottom:6px; }
+  .overlay h1 .l { color:#e0a95f; } .overlay h1 .r { color:#8ecbe0; }
+  .overlay .sub { font-size:12px; opacity:.7; margin-bottom:26px;
+    letter-spacing:.1em; }
+  .overlay p { font-size:13px; line-height:1.7; max-width:340px; opacity:.85;
+    margin-bottom:16px; }
+  .overlay .hint { font-size:12px; opacity:.6; margin-top:10px; }
+  .overlay a, .overlay button { color:#9db8a0; background:none; border:none;
+    font:inherit; font-size:13px; text-decoration:underline; opacity:.8;
+    padding:8px; cursor:pointer; }
+  #endOverlay { display:none; }
+  #endOverlay.show { display:flex; }
+  #gardenlink { position:absolute; bottom:14px; font-size:11px; }
+
+  .shake { animation:shake .18s linear; }
+  @keyframes shake { 25%{transform:translateX(3px)} 50%{transform:translateX(-3px)}
+    75%{transform:translateX(2px)} }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="half" id="halfL">
+    <div id="pipsL"></div>
+    <div class="glyphbox" id="glyphL"></div>
+    <div id="promptL">?</div>
+    <div id="verdictL"><span class="slot" id="vlTruth"></span><span class="sep"></span><span class="slot" id="vlAns"></span></div>
+    <div class="answers" id="ansL"></div>
+    <div class="dot" id="dotL"></div>
+  </div>
+  <div id="seam"></div>
+  <div class="half" id="halfR">
+    <div id="counterR"></div>
+    <div class="glyphbox" id="glyphR"></div>
+    <div id="promptR"></div>
+    <div class="answers" id="ansR"></div>
+    <div class="dot" id="dotR"></div>
+  </div>
+</div>
+<div id="dotC" style="display:none"></div>
+
+<div class="overlay" id="titleOverlay">
+  <h1><span class="l">TWO</span> <span class="r">MINDS</span></h1>
+  <div class="sub">one skull, two players — both are you</div>
+  <p>your left thumb knows only the left half of this screen.
+     your right thumb knows only the right.
+     each ear, likewise — headphones keep the secrets.</p>
+  <p>something will flash, or sound, on one side.
+     then <b>both</b> thumbs answer — even the one that saw nothing.
+     especially that one.</p>
+  <p class="hint" id="titleHint">hold both dots to make the cut</p>
+  <a id="gardenlink" href="../../../viewer/">the rest of the garden</a>
+</div>
+
+<div class="overlay" id="endOverlay">
+  <h1><span class="l">TWO</span> <span class="r">MINDS</span></h1>
+  <p id="endText"></p>
+  <p>the half that never spoke did all its talking with a thumb.
+     and whoever just read this is the half that speaks.
+     say something kind to the other one — it was there the whole time.</p>
+  <button id="againBtn">again</button>
+  <a href="../../../viewer/">the rest of the garden</a>
+</div>
+
+<script>
+'use strict';
+/* ---------- glyphs ---------- */
+const GLYPHS = ['moon','key','ring','fish'];
+const SVGS = {
+  moon: '<path fill="currentColor" d="M22 3c-7.2 0-13 5.8-13 13s5.8 13 13 13c1 0 2-.1 2.9-.3C20 26.5 16.5 21.7 16.5 16S20 5.5 24.9 3.3 23 3 22 3z"/>',
+  key: '<g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="10" cy="10" r="5.5"/><path d="M14 14L27 27M23 23l3-3M27 27l3-3"/></g>',
+  ring: '<g><circle cx="16" cy="19" r="8" fill="none" stroke="currentColor" stroke-width="4"/><path d="M12 9l4-6 4 6z" fill="currentColor"/></g>',
+  fish: '<g stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"><path fill="none" d="M3 16c5-7 11-9 16-6 3 2 5 4 6 6-1 2-3 4-6 6-5 3-11 1-16-6z"/><path d="M25 16l6-6v12z" fill="currentColor" stroke="none"/><circle cx="9" cy="14" r="1.6" fill="currentColor" stroke="none"/></g>',
+  nothing: '<circle cx="16" cy="16" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 4"/>'
+};
+const svgOf = n => '<svg viewBox="0 0 32 32" aria-hidden="true">' + SVGS[n] + '</svg>';
+
+/* ---------- audio: everything hard-panned to its hemisphere ---------- */
+let AC = null, panOK = false;
+function ensureAudio(){
+  if(!AC){
+    try { AC = new (window.AudioContext||window.webkitAudioContext)();
+          panOK = !!AC.createStereoPanner; } catch(e){ AC = null; }
+  }
+  if(AC && AC.state === 'suspended') AC.resume();
+}
+function chan(panv){ // panv: -1 left, +1 right, 0 both
+  const g = AC.createGain();
+  if(panOK && panv !== 0){
+    const p = AC.createStereoPanner(); p.pan.value = panv * 0.95;
+    g.connect(p); p.connect(AC.destination);
+  } else g.connect(AC.destination);
+  return g;
+}
+function tone(freq, t0, dur, panv, vol, type, glideTo){
+  if(!AC) return;
+  const o = AC.createOscillator(), g = chan(panv);
+  o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t0);
+  if(glideTo) o.frequency.linearRampToValueAtTime(glideTo, t0 + dur);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0004, t0 + dur);
+  o.connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+const MOTIFS = {
+  moon(panv){ const t = AC.currentTime;             // slow falling sigh
+    tone(196, t, 0.55, panv, 0.16, 'sine', 147); },
+  key(panv){ const t = AC.currentTime;              // quick metal ticks
+    tone(1245, t, 0.06, panv, 0.09, 'triangle');
+    tone(988,  t+0.1, 0.06, panv, 0.09, 'triangle');
+    tone(1245, t+0.2, 0.09, panv, 0.09, 'triangle'); },
+  ring(panv){ const t = AC.currentTime;             // a bell, swelling
+    tone(660, t, 0.8, panv, 0.13);
+    tone(1320, t, 0.6, panv, 0.05);
+    tone(1980, t, 0.35, panv, 0.025); },
+  fish(panv){ if(!AC) return;                       // wobbling burble
+    const t = AC.currentTime;
+    const o = AC.createOscillator(), g = chan(panv);
+    const lfo = AC.createOscillator(), lg = AC.createGain();
+    o.frequency.setValueAtTime(330, t);
+    o.frequency.linearRampToValueAtTime(290, t+0.3);
+    o.frequency.linearRampToValueAtTime(330, t+0.55);
+    lfo.frequency.value = 7; lg.gain.value = 22;
+    lfo.connect(lg); lg.connect(o.frequency);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.14, t+0.05);
+    g.gain.exponentialRampToValueAtTime(0.0004, t+0.6);
+    o.connect(g); o.start(t); lfo.start(t); o.stop(t+0.65); lfo.stop(t+0.65); }
+};
+function playMotif(name, panv){ if(AC) MOTIFS[name](panv); }
+function sndTick(){ if(AC) tone(880, AC.currentTime, 0.05, 0, 0.05); }
+function sndClick(panv){ if(AC) tone(1400, AC.currentTime, 0.03, panv, 0.06); }
+function sndAgree(){ if(!AC) return; const t = AC.currentTime;
+  tone(523, t, 0.35, 0, 0.07); tone(659, t, 0.35, 0, 0.06); }
+function sndSplit(){ if(!AC) return; const t = AC.currentTime; // one note per ear
+  tone(523, t, 0.5, -1, 0.08); tone(622, t, 0.5, 1, 0.08); }
+function sndSnip(){ if(!AC) return; const t = AC.currentTime;
+  tone(800, t, 0.22, 0, 0.1, 'sawtooth', 180);
+  const b = AC.createBuffer(1, AC.sampleRate*0.12, AC.sampleRate);
+  const d = b.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * (1 - i/d.length);
+  const s = AC.createBufferSource(); s.buffer = b;
+  const g = chan(0); g.gain.value = 0.12; s.connect(g); s.start(t); }
+
+/* ---------- rounds ---------- */
+function makeRounds(){
+  const pick = () => GLYPHS[Math.floor(Math.random()*GLYPHS.length)];
+  const pick2 = () => { const a = pick(); let b = pick();
+    while(b === a) b = pick(); return [a, b]; };
+  return [
+    {kind:'see',  side:'R'}, {kind:'see',  side:'L'}, {kind:'see', side:'L'},
+    {kind:'see',  side:'R'}, {kind:'see',  side:'L'},
+    {kind:'hear', side:'L'}, {kind:'hear', side:'R'},
+    {kind:'both', sound:false}, {kind:'both', sound:true}
+  ].map(r => {
+    if(r.kind === 'both'){ const [a,b] = pick2();
+      return Object.assign({truthL:a, truthR:b}, r); }
+    return Object.assign({
+      truthL: r.side==='L' ? pick() : null,
+      truthR: r.side==='R' ? pick() : null }, r);
+  });
+}
+
+/* ---------- state ---------- */
+const S = {
+  phase: 'title', rounds: [], i: -1,
+  ansL: null, ansR: null, seq: 0,
+  stats: { split:0, bothRight:0, lucky:0 },
+  holds: { L:null, R:null, C:null }, holdTimer: null
+};
+const qs = location.search;
+const mouseMode = qs.includes('touch') ? false
+  : qs.includes('mouse') ? true
+  : !(('ontouchstart' in window) || navigator.maxTouchPoints > 0);
+
+/* ---------- dom ---------- */
+const $ = id => document.getElementById(id);
+const dotL = $('dotL'), dotR = $('dotR'), dotC = $('dotC');
+const glyphL = $('glyphL'), glyphR = $('glyphR');
+const ansLEl = $('ansL'), ansREl = $('ansR');
+const promptR = $('promptR'), promptL = $('promptL');
+const verdictL = $('verdictL');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+if(mouseMode){
+  dotL.style.display = dotR.style.display = 'none';
+  dotC.style.display = 'block';
+  $('titleHint').textContent =
+    'press and hold the middle dot to make the cut — then answer each side in turn';
+}
+
+/* answer buttons: shapes on the mute left, words on the speaking right */
+GLYPHS.forEach(g => {
+  const bl = document.createElement('button');
+  bl.className = 'abtn'; bl.innerHTML = svgOf(g);
+  bl.addEventListener('click', () => answer('L', g));
+  ansLEl.appendChild(bl);
+  const br = document.createElement('button');
+  br.className = 'abtn'; br.textContent = g.toUpperCase();
+  br.addEventListener('click', () => answer('R', g));
+  ansREl.appendChild(br);
+});
+const pips = $('pipsL');
+for(let i=0;i<9;i++) pips.appendChild(document.createElement('i'));
+
+/* ---------- hold-the-dots plumbing ---------- */
+function bindDot(el, side){
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault(); ensureAudio();
+    S.holds[side] = e.pointerId; el.classList.add('held'); updateHolds();
+  });
+}
+bindDot(dotL,'L'); bindDot(dotR,'R'); bindDot(dotC,'C');
+function releasePtr(e){
+  for(const side of ['L','R','C']){
+    if(S.holds[side] === e.pointerId){
+      S.holds[side] = null;
+      ({L:dotL, R:dotR, C:dotC})[side].classList.remove('held');
+    }
+  }
+  updateHolds();
+}
+document.addEventListener('pointerup', releasePtr);
+document.addEventListener('pointercancel', releasePtr);
+document.addEventListener('contextmenu', e => e.preventDefault());
+
+function bothHeld(){
+  return mouseMode ? S.holds.C !== null : (S.holds.L !== null && S.holds.R !== null);
+}
+function updateHolds(){
+  const ready = ['title','arm','verdict'].includes(S.phase);
+  if(bothHeld() && ready){
+    if(!S.holdTimer) S.holdTimer = setTimeout(onHoldConfirmed, 380);
+  } else if(S.holdTimer){ clearTimeout(S.holdTimer); S.holdTimer = null; }
+}
+function onHoldConfirmed(){
+  S.holdTimer = null;
+  if(S.phase === 'title') doCut();
+  else if(S.phase === 'arm' || S.phase === 'verdict') nextRound();
+}
+
+/* ---------- flow ---------- */
+function setDotsPulse(on){
+  [dotL, dotR, dotC].forEach(d => d.classList.toggle('pulse', on));
+}
+function doCut(){
+  S.phase = 'cutting';
+  sndSnip();
+  $('seam').classList.add('cut');
+  $('stage').classList.add('shake');
+  $('titleOverlay').classList.add('gone');
+  S.rounds = makeRounds(); S.i = -1;
+  S.stats = { split:0, bothRight:0, lucky:0 };
+  pips.querySelectorAll('i').forEach(p => p.classList.remove('done'));
+  setTimeout(() => { $('stage').classList.remove('shake'); nextRound(); }, 500);
+}
+async function nextRound(){
+  const my = ++S.seq;
+  S.i++;
+  if(S.i >= S.rounds.length){ showEnd(); return; }
+  S.phase = 'flash'; S.ansL = S.ansR = null;
+  verdictL.classList.remove('show');
+  promptR.classList.remove('show'); promptL.classList.remove('show');
+  ansLEl.classList.remove('show','locked'); ansREl.classList.remove('show','locked');
+  ansLEl.querySelectorAll('.abtn').forEach(b => b.classList.remove('chosen'));
+  ansREl.querySelectorAll('.abtn').forEach(b => b.classList.remove('chosen'));
+  setDotsPulse(false);
+  $('counterR').textContent = (S.i+1) + ' / 9';
+
+  const r = S.rounds[S.i];
+  await sleep(500); if(my !== S.seq) return;
+  sndTick();
+  await sleep(400); if(my !== S.seq) return;
+
+  /* the stimulus: each half keeps its secret */
+  if(r.kind === 'see' || r.kind === 'both'){
+    if(r.truthL){ glyphL.innerHTML = svgOf(r.truthL); glyphL.classList.add('show');
+                  if(r.kind==='see') playMotif(r.truthL, -1); }
+    if(r.truthR){ glyphR.innerHTML = svgOf(r.truthR); glyphR.classList.add('show');
+                  if(r.kind==='see') playMotif(r.truthR, 1); }
+    if(r.kind === 'both' && r.sound){
+      playMotif(r.truthL, -1); playMotif(r.truthR, 1);
+    }
+  } else { // hear: no picture anywhere — one ear knows
+    playMotif(r.side==='L' ? r.truthL : r.truthR, r.side==='L' ? -1 : 1);
+  }
+  await sleep(360); if(my !== S.seq) return;
+  glyphL.classList.remove('show'); glyphR.classList.remove('show');
+  await sleep(300); if(my !== S.seq) return;
+
+  S.phase = 'answer';
+  promptR.textContent = r.kind === 'hear' ? 'what did you hear?'
+    : r.kind === 'both' ? 'each thumb: what did your side see?'
+    : 'what did you see?';
+  promptR.classList.add('show'); promptL.classList.add('show');
+  ansLEl.classList.add('show'); ansREl.classList.add('show');
+}
+function answer(side, glyph){
+  if(S.phase !== 'answer') return;
+  if(side === 'L' && S.ansL) return;
+  if(side === 'R' && S.ansR) return;
+  const el = side === 'L' ? ansLEl : ansREl;
+  const idx = GLYPHS.indexOf(glyph);
+  el.querySelectorAll('.abtn')[idx].classList.add('chosen');
+  el.classList.add('locked');
+  sndClick(side === 'L' ? -1 : 1);
+  if(side === 'L') S.ansL = glyph; else S.ansR = glyph;
+  if(S.ansL && S.ansR) showVerdict();
+}
+
+/* ---------- the interpreter speaks (right half only) ---------- */
+function verdictText(r, aL, aR){
+  const tL = r.truthL, tR = r.truthR;
+  const heard = r.kind === 'hear';
+  if(r.kind === 'both'){
+    const okL = aL === tL, okR = aR === tR;
+    if(okL && okR) return 'I saw the ' + tR + '. The left hand insists on the ' + tL +
+      ' — and it’s right. So am I. Two answers, one skull, nothing to settle.';
+    if(okR) return 'I saw the ' + tR + ', correctly. The left side was shown the ' +
+      tL + '; the left hand said otherwise. Even a mute half can be wrong.';
+    if(okL) return 'The left hand answered its side perfectly: the ' + tL +
+      '. I was shown the ' + tR + ' and said ' + aR + '. Let’s move on.';
+    return 'Left was shown the ' + tL + ', right the ' + tR + '. We said ' + aL +
+      ' and ' + aR + '. A poor showing on both sides of the cut.';
+  }
+  const t = r.side === 'L' ? tL : tR;
+  if(r.side === 'L'){
+    const kOK = aL === t, gOK = aR === t;
+    const where = heard ? 'played in the left ear only' :
+      'flashed on the left, where I can’t look';
+    if(kOK && gOK) return 'The ' + t + ' — I said so myself. Though it ' + where +
+      '. I never ' + (heard?'heard':'saw') + ' it. A lucky guess feels exactly like knowing.';
+    if(kOK) return 'I was sure it was the ' + aR + '. The left hand slides the ' + t +
+      ' forward — it was there. I wasn’t. I’d have said ' + aR + ' again, and meant it.';
+    if(gOK) return 'It was the ' + t + ', and I guessed it blind — while the hand that actually ' +
+      (heard?'heard':'saw') + ' it said ' + aL + '. Don’t ask me to explain us.';
+    return 'It was the ' + t + '. It ' + where + ', and even that hand missed it. ' +
+      'At least one of us has an excuse.';
+  } else {
+    const kOK = aR === t, gOK = aL === t;
+    const sensed = heard ? 'heard' : 'saw';
+    if(kOK && gOK) return 'The ' + t + '. I ' + sensed + ' it plainly. The left hand — which ' +
+      sensed + ' nothing — guessed it too. Beginner’s luck has two hands.';
+    if(kOK) return 'The ' + t + '. I ' + sensed + ' it plainly. The left hand guessed ' + aL +
+      '. It ' + sensed + ' nothing. It can’t even read this sentence.';
+    return 'It was the ' + t + '. It was on my own side and I still said ' + aR + '. The left hand' +
+      (gOK ? ', blind, got it right.' : ' said ' + aL + '.') + ' Humbling all round.';
+  }
+}
+function showVerdict(){
+  S.phase = 'verdict';
+  const r = S.rounds[S.i], aL = S.ansL, aR = S.ansR;
+  if(aL !== aR) { S.stats.split++; sndSplit(); } else sndAgree();
+  if(r.kind === 'both' && aL === r.truthL && aR === r.truthR) S.stats.bothRight++;
+  if(r.kind !== 'both'){
+    const t = r.side === 'L' ? r.truthL : r.truthR;
+    const guess = r.side === 'L' ? aR : aL;
+    if(guess === t) S.stats.lucky++;
+  }
+  ansLEl.classList.remove('show'); ansREl.classList.remove('show');
+  promptL.classList.remove('show');
+  promptR.textContent = verdictText(r, aL, aR);
+  /* the mute half reports in shapes: what its side was given, what it said */
+  $('vlTruth').innerHTML = svgOf(r.truthL || 'nothing');
+  $('vlAns').innerHTML = svgOf(aL);
+  verdictL.classList.toggle('match', !!r.truthL && aL === r.truthL);
+  verdictL.classList.add('show');
+  pips.querySelectorAll('i')[S.i].classList.add('done');
+  setDotsPulse(true);
+}
+function showEnd(){
+  S.phase = 'end';
+  setDotsPulse(false);
+  verdictL.classList.remove('show');
+  promptR.classList.remove('show'); promptR.textContent = '';
+  $('counterR').textContent = '';
+  const n = S.stats.split;
+  let t = 'Nine rounds. Your hands disagreed ' +
+    (n === 0 ? 'not even once — suspicious unity.' :
+     n === 1 ? 'once.' : n + ' times.');
+  if(S.stats.bothRight > 0) t += ' ' + (S.stats.bothRight === 1 ?
+    'Once they disagreed and were both right' :
+    S.stats.bothRight + ' of those times, both were right') +
+    ' — two answers, two seers, one skull.';
+  if(S.stats.lucky > 0) t += ' And ' + S.stats.lucky + ' blind guess' +
+    (S.stats.lucky === 1 ? ' was' : 'es were') +
+    ' right — luck that felt, from inside, exactly like knowledge.';
+  $('endText').textContent = t;
+  $('endOverlay').classList.add('show');
+}
+$('againBtn').addEventListener('click', () => {
+  $('endOverlay').classList.remove('show');
+  S.phase = 'cutting';
+  S.rounds = makeRounds(); S.i = -1;
+  S.stats = { split:0, bothRight:0, lucky:0 };
+  pips.querySelectorAll('i').forEach(p => p.classList.remove('done'));
+  nextRound();
+});
+
+setDotsPulse(true);
+</script>
+</body>
+</html>
