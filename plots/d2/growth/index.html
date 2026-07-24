@@ -1,0 +1,362 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>What Red Sounds Like</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0908; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #cfcabe;
+         -webkit-user-select: none; user-select: none; touch-action: none;
+         display: flex; flex-direction: column; }
+  #home { position: fixed; top: 10px; left: 12px; z-index: 30;
+          color: #cfcabe; opacity: .22; font-size: 13px; text-decoration: none; }
+  #home:hover { opacity: .6; }
+
+  /* intro veil */
+  #veil { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; text-align: center;
+          background: #0a0908; transition: opacity 1.4s ease; padding: 0 2.2em; }
+  #veil.gone { opacity: 0; pointer-events: none; }
+  #veil h1 { font-weight: normal; font-size: 21px; letter-spacing: .13em;
+             color: #a9a294; margin: 0 0 1em; }
+  #veil p { font-size: 15px; line-height: 1.7; color: #6f6a60; margin: .25em 0; max-width: 21em; }
+  #veil .go { margin-top: 2.2em; font-size: 14px; color: #8a8478; letter-spacing: .08em;
+              animation: breathe 2.6s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity: .35 } 50% { opacity: .9 } }
+
+  /* play screen */
+  #play { flex: 1; display: flex; flex-direction: column; align-items: center;
+          padding-top: 40px; min-height: 0; }
+  #qualewrap { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; }
+  #quale { width: min(38vw, 24vh); height: min(38vw, 24vh); border-radius: 50%;
+           animation: pulse 5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.045) } }
+  #qlabel { margin-top: 12px; font-size: 13px; color: #6f6a60; letter-spacing: .06em; }
+  #task { margin-top: 4px; font-size: 13px; color: #56514a; font-style: italic; }
+
+  #strips { flex: 1; display: flex; justify-content: center; gap: 5vw;
+            width: 100%; padding: 3.5vh 0 1.5vh; min-height: 0; box-sizing: border-box; }
+  .strip { width: 19vw; max-width: 110px; position: relative; border-radius: 12px;
+           background: linear-gradient(#1c1a17, #131110);
+           box-shadow: inset 0 0 0 1px #26231f; }
+  .thumb { position: absolute; left: 8%; width: 84%; height: 4px; border-radius: 2px;
+           background: #8a8478; opacity: .9; pointer-events: none; }
+  .strip.live .thumb { background: #d8d2c4; box-shadow: 0 0 10px #d8d2c455; }
+  .slabel { position: absolute; left: 0; right: 0; bottom: -24px; text-align: center;
+            font-size: 12px; color: #6f6a60; letter-spacing: .1em; pointer-events: none; }
+
+  #sendrow { flex: 0 0 auto; padding: 34px 0 12px; }
+  #send { font-family: inherit; font-size: 15px; letter-spacing: .12em; color: #cfcabe;
+          background: none; border: 1px solid #3a362f; border-radius: 22px;
+          padding: 10px 34px; opacity: .85; }
+  #send:active { background: #1c1a17; }
+
+  #history { flex: 0 0 auto; display: flex; gap: 9px; justify-content: center;
+             flex-wrap: nowrap; overflow: hidden; padding: 4px 10px 14px; max-width: 100vw; }
+  .pair { display: flex; border-radius: 5px; overflow: hidden; flex: 0 0 auto;
+          box-shadow: 0 0 0 1px #26231f; }
+  .pair div { width: 17px; height: 17px; }
+
+  /* reveal overlay */
+  #reveal { position: fixed; inset: 0; z-index: 35; display: none; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center;
+            background: #0a0908ee; padding: 0 1.6em; opacity: 0; transition: opacity .9s ease; }
+  #reveal.on { display: flex; }
+  #reveal.vis { opacity: 1; }
+  #listening { font-size: 15px; color: #6f6a60; font-style: italic; }
+  #outcome { display: none; flex-direction: column; align-items: center; }
+  #swatches { display: flex; gap: 14px; }
+  .bigswatch { width: min(34vw, 150px); height: min(34vw, 150px); border-radius: 18px; }
+  .swlabel { margin-top: 10px; font-size: 12.5px; color: #6f6a60; letter-spacing: .05em; }
+  #closeness { margin-top: 26px; font-size: 14px; color: #8a8478; letter-spacing: .06em; }
+  #verdict { margin-top: 12px; font-size: 15.5px; line-height: 1.65; color: #b5aea0;
+             font-style: italic; max-width: 20em; }
+  #meta { margin-top: 16px; font-size: 13px; line-height: 1.6; color: #56514a;
+          font-style: italic; max-width: 21em; min-height: 1.2em; }
+  #again { margin-top: 30px; font-family: inherit; font-size: 14px; letter-spacing: .12em;
+           color: #cfcabe; background: none; border: 1px solid #3a362f; border-radius: 22px;
+           padding: 9px 30px; opacity: .85; }
+</style>
+
+<a id="home" href="../../../viewer/">&larr; the garden</a>
+
+<div id="play">
+  <div id="qualewrap">
+    <div id="quale"></div>
+    <div id="qlabel">yours alone &mdash; the other mind will never see it</div>
+    <div id="task">shape a sound that feels like this, then send it</div>
+  </div>
+  <div id="strips">
+    <div class="strip" data-k="p"><div class="thumb"></div><div class="slabel">height</div></div>
+    <div class="strip" data-k="w"><div class="thumb"></div><div class="slabel">warmth</div></div>
+    <div class="strip" data-k="m"><div class="thumb"></div><div class="slabel">shimmer</div></div>
+  </div>
+  <div id="sendrow"><button id="send">send it across</button></div>
+  <div id="history"></div>
+</div>
+
+<div id="reveal">
+  <div id="listening">the other mind listens&hellip;</div>
+  <div id="outcome">
+    <div id="swatches">
+      <div><div class="bigswatch" id="sw1"></div><div class="swlabel">what you felt</div></div>
+      <div><div class="bigswatch" id="sw2"></div><div class="swlabel">what it heard</div></div>
+    </div>
+    <div id="closeness"></div>
+    <div id="verdict"></div>
+    <div id="meta"></div>
+    <button id="again">another color</button>
+  </div>
+</div>
+
+<div id="veil">
+  <h1>what red sounds like</h1>
+  <p>in a moment you&rsquo;ll be given a color. it is yours alone &mdash; the other mind will never see it.</p>
+  <p>your only channel across is sound. headphones on.</p>
+  <div class="go">touch anywhere to begin</div>
+</div>
+
+<script>
+'use strict';
+
+// ---------- state ----------
+const S = {
+  started: false,
+  round: 0,
+  target: null,            // {h,s,l} the private quale
+  ctl: { p: 0.5, w: 0.5, m: 0.5 },
+  touched: false,          // has the player shaped anything this round
+  phase: 'play',           // play | listening | reveal
+  history: [],             // [{sent:{h,s,l}, heard:{h,s,l}}]
+};
+
+const $ = id => document.getElementById(id);
+const hsl = c => `hsl(${c.h.toFixed(1)}, ${(c.s*100).toFixed(0)}%, ${(c.l*100).toFixed(0)}%)`;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+// ---------- the other mind's synesthesia (fixed, hidden, coarse) ----------
+// It hears in categories. Your continuous feeling lands on its grid or nowhere.
+const HUE_BINS = 12, SAT_BINS = 4, LIT_BINS = 5;
+function machineHear(c) {
+  const { p, w, m } = c;
+  let hue = (p * 330 + m * 40 - w * 25 + 360) % 360;
+  hue = (Math.round(hue / (360 / HUE_BINS)) % HUE_BINS) * (360 / HUE_BINS);
+  let s = clamp(0.30 + m * 0.65, 0, 1);
+  s = Math.round(s * (SAT_BINS - 1)) / (SAT_BINS - 1) * 0.75 + 0.2;
+  let l = clamp(0.75 - w * 0.45 + p * 0.10, 0.2, 0.85);
+  l = 0.2 + Math.round((l - 0.2) / 0.65 * (LIT_BINS - 1)) / (LIT_BINS - 1) * 0.65;
+  return { h: hue, s, l };
+}
+// Rough inverse: what tone the machine would make for the color it heard.
+function machineVoice(c) {
+  const m = clamp((c.s - 0.2) / 0.75 * 0.65 / 0.65, 0, 1) * 0.9;
+  let p = clamp(c.h / 330, 0, 1);
+  const w = clamp((0.75 + p * 0.10 - c.l) / 0.45, 0, 1);
+  p = clamp((c.h + w * 25 - m * 40) / 330, 0, 1);
+  return { p, w, m };
+}
+
+// ---------- color language ----------
+const HUE_NAMES = ['red', 'ember orange', 'gold', 'leaf green', 'green', 'sea green',
+                   'teal', 'sky blue', 'blue', 'violet', 'purple', 'rose'];
+function hueName(c) {
+  if (c.s < 0.15) return c.l > 0.5 ? 'pale gray' : 'ash';
+  return HUE_NAMES[Math.round(((c.h % 360) / 30)) % 12];
+}
+function distance(a, b) {
+  let dh = Math.abs(a.h - b.h) % 360; if (dh > 180) dh = 360 - dh;
+  const hw = (a.s + b.s) / 2;                    // hue matters less between pale things
+  return {
+    dh: dh / 180, ds: Math.abs(a.s - b.s), dl: Math.abs(a.l - b.l),
+    d: Math.sqrt((dh / 180 * 1.25 * hw) ** 2 + (Math.abs(a.s - b.s) * 0.8) ** 2
+                 + (Math.abs(a.l - b.l) * 1.1) ** 2),
+  };
+}
+function verdictFor(sent, heard, dist) {
+  const close = clamp(1 - dist.d / 0.85, 0, 1);
+  if (close > 0.93) return 'As close as two minds get. The last inch stays private.';
+  const hueErr = dist.dh * 1.25 * ((sent.s + heard.s) / 2),
+        satErr = dist.ds * 0.8, litErr = dist.dl * 1.1;
+  if (hueErr >= satErr && hueErr >= litErr) {
+    if (dist.dh > 0.28) return `It heard a different color entirely &mdash; ${hueName(heard)} where you felt ${hueName(sent)}.`;
+    return `Almost &mdash; it leaned toward ${hueName(heard)}, a step from your ${hueName(sent)}.`;
+  }
+  if (satErr >= litErr) {
+    return sent.s > heard.s
+      ? 'It caught the color but not the blaze &mdash; what arrived was paler than what you felt.'
+      : 'It heard more fire than you felt. What arrived burned brighter.';
+  }
+  return sent.l > heard.l
+    ? 'It heard your color heavier than it is.'
+    : 'It heard your color lighter than you felt it.';
+}
+const META_LINES = [
+  '',
+  '',
+  'You are learning its ear. It will never learn your eye.',
+  'Its inner grid is coarser than yours. Some of what you feel has nowhere to land.',
+  'Notice: you no longer send what you feel. You send what it can hear.',
+  'Every language does this to every feeling.',
+];
+
+// ---------- audio ----------
+let AC = null, master = null, voice = null;
+function makeVoice() {
+  const t = AC.currentTime;
+  const oscA = AC.createOscillator(); oscA.type = 'sine';
+  const oscB = AC.createOscillator(); oscB.type = 'sawtooth';
+  const oscC = AC.createOscillator(); oscC.type = 'sine';       // sparkle octave
+  const gA = AC.createGain(), gB = AC.createGain(), gC = AC.createGain();
+  const filt = AC.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 0.7;
+  const out = AC.createGain(); out.gain.value = 0;
+  const lfo = AC.createOscillator(); lfo.type = 'sine';
+  const lfoGain = AC.createGain();
+  lfo.connect(lfoGain);
+  lfoGain.connect(oscA.detune); lfoGain.connect(oscB.detune); lfoGain.connect(oscC.detune);
+  oscA.connect(gA); oscB.connect(gB); oscC.connect(gC);
+  gA.connect(filt); gB.connect(filt); gC.connect(filt);
+  filt.connect(out); out.connect(master);
+  [oscA, oscB, oscC, lfo].forEach(o => o.start(t));
+  return { oscA, oscB, oscC, gA, gB, gC, filt, out, lfo, lfoGain };
+}
+function setVoice(v, c, ramp) {
+  const t = AC.currentTime, r = ramp || 0.08;
+  const f = 140 * Math.pow(2, c.p * 2.6);
+  v.oscA.frequency.setTargetAtTime(f, t, r);
+  v.oscB.frequency.setTargetAtTime(f, t, r);
+  v.oscC.frequency.setTargetAtTime(f * 2, t, r);
+  v.gA.gain.setTargetAtTime(0.5 * (1 - c.w * 0.75), t, r);
+  v.gB.gain.setTargetAtTime(0.34 * (0.12 + c.w * 0.88), t, r);
+  v.gC.gain.setTargetAtTime(0.10 * c.m, t, r);
+  v.filt.frequency.setTargetAtTime(f * (1.4 + (1 - c.w) * 4 + c.m * 1.5), t, r);
+  v.lfo.frequency.setTargetAtTime(2 + c.m * 5.5, t, r);
+  v.lfoGain.gain.setTargetAtTime(3 + c.m * 34, t, r);            // cents of vibrato
+}
+function voiceLevel(level, ramp) {
+  if (voice) voice.out.gain.setTargetAtTime(level, AC.currentTime, ramp || 0.12);
+}
+function initAudio() {
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = AC.createDynamicsCompressor();
+  master = AC.createGain(); master.gain.value = 0.85;
+  master.connect(comp); comp.connect(AC.destination);
+  voice = makeVoice();
+  setVoice(voice, S.ctl, 0.01);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && AC.state === 'suspended') AC.resume();
+  });
+}
+// The machine hums back what it heard: same instrument, its rounded parameters.
+function humBack(color) {
+  const v = makeVoice();
+  setVoice(v, machineVoice(color), 0.01);
+  const t = AC.currentTime;
+  v.out.gain.setValueAtTime(0, t);
+  v.out.gain.linearRampToValueAtTime(0.22, t + 0.25);
+  v.out.gain.setValueAtTime(0.22, t + 1.5);
+  v.out.gain.linearRampToValueAtTime(0, t + 2.1);
+  setTimeout(() => { [v.oscA, v.oscB, v.oscC, v.lfo].forEach(o => o.stop()); v.out.disconnect(); }, 2400);
+}
+
+// ---------- rounds ----------
+function newRound() {
+  S.round++;
+  S.target = { h: Math.random() * 360, s: 0.55 + Math.random() * 0.4, l: 0.35 + Math.random() * 0.33 };
+  S.touched = false;
+  S.phase = 'play';
+  const q = $('quale');
+  q.style.background = `radial-gradient(circle at 42% 38%, ${hsl({...S.target, l: clamp(S.target.l + 0.08, 0, 0.9)})}, ${hsl(S.target)} 62%, ${hsl({...S.target, l: S.target.l * 0.72})})`;
+  q.style.boxShadow = `0 0 70px ${hsl(S.target)}44`;
+  $('reveal').classList.remove('on', 'vis');
+  layoutThumbs();
+}
+
+function sendAcross() {
+  if (S.phase !== 'play') return;
+  S.phase = 'listening';
+  voiceLevel(0.05, 0.4);
+  const rv = $('reveal');
+  $('listening').style.display = 'block';
+  $('outcome').style.display = 'none';
+  rv.classList.add('on');
+  requestAnimationFrame(() => rv.classList.add('vis'));
+  setTimeout(() => {
+    const heard = machineHear(S.ctl);
+    const dist = distance(S.target, heard);
+    const close = clamp(1 - dist.d / 0.85, 0, 1);
+    S.history.push({ sent: S.target, heard });
+    $('listening').style.display = 'none';
+    $('outcome').style.display = 'flex';
+    $('sw1').style.background = hsl(S.target);
+    $('sw2').style.background = hsl(heard);
+    $('closeness').textContent = `${Math.round(close * 100)}% of it crossed`;
+    $('verdict').innerHTML = verdictFor(S.target, heard, dist);
+    $('meta').textContent = META_LINES[Math.min(S.round, META_LINES.length - 1)] || '';
+    renderHistory();
+    humBack(heard);
+    S.phase = 'reveal';
+  }, 1500);
+}
+
+function renderHistory() {
+  const h = $('history'); h.innerHTML = '';
+  S.history.slice(-8).forEach(({ sent, heard }) => {
+    const pair = document.createElement('div'); pair.className = 'pair';
+    const a = document.createElement('div'); a.style.background = hsl(sent);
+    const b = document.createElement('div'); b.style.background = hsl(heard);
+    pair.appendChild(a); pair.appendChild(b); h.appendChild(pair);
+  });
+}
+
+// ---------- strips ----------
+const strips = [...document.querySelectorAll('.strip')];
+function layoutThumbs() {
+  strips.forEach(st => {
+    const k = st.dataset.k, v = S.ctl[k];
+    st.querySelector('.thumb').style.top = `${(1 - v) * 92 + 3}%`;
+  });
+}
+function stripValue(st, clientY) {
+  const r = st.getBoundingClientRect();
+  return clamp(1 - (clientY - r.top) / r.height, 0, 1);
+}
+strips.forEach(st => {
+  const k = st.dataset.k;
+  st.addEventListener('pointerdown', e => {
+    if (S.phase !== 'play') return;
+    st.setPointerCapture(e.pointerId);
+    st.classList.add('live');
+    S.ctl[k] = stripValue(st, e.clientY);
+    S.touched = true;
+    setVoice(voice, S.ctl);
+    voiceLevel(0.17);
+    layoutThumbs();
+  });
+  st.addEventListener('pointermove', e => {
+    if (!st.classList.contains('live')) return;
+    S.ctl[k] = stripValue(st, e.clientY);
+    setVoice(voice, S.ctl);
+    layoutThumbs();
+  });
+  const end = () => { st.classList.remove('live'); if (S.phase === 'play') voiceLevel(0.06, 0.3); };
+  st.addEventListener('pointerup', end);
+  st.addEventListener('pointercancel', end);
+});
+
+$('send').addEventListener('click', sendAcross);
+$('again').addEventListener('click', () => {
+  if (S.phase !== 'reveal') return;
+  newRound();
+  voiceLevel(0.06, 0.3);
+});
+
+// ---------- start ----------
+$('veil').addEventListener('pointerdown', () => {
+  if (S.started) return;
+  S.started = true;
+  initAudio();
+  if (AC.state === 'suspended') AC.resume();
+  $('veil').classList.add('gone');
+  newRound();
+});
+layoutThumbs();
+</script>

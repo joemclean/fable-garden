@@ -13,7 +13,7 @@
     "a2": { "stage": 2, "title": "Trust the Feeling", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable blindsight hunt: hold and wander, a beating drone stills near the mark; letting go early pays", "door": "plots/a2/growth/index.html", "plant": "fungus" },
     "b2": { "stage": 2, "title": "Below the Line", "planted": "2026-07-24", "last_tended": "2026-07-24T18:06:36Z", "note": "playable priming run: nine free choices over hidden pushes; the replay shows the strings", "door": "plots/b2/growth/index.html", "plant": "fungus" },
     "c2": { "stage": 2, "title": "The Guessing Machine", "planted": "2026-07-24", "last_tended": "2026-07-24T19:09:59Z", "note": "playable prediction round: your taps render the world; wrong guesses sound fine, then sting", "door": "plots/c2/growth/index.html", "plant": "crystal" },
-    "d2": { "stage": 1, "title": "What Red Sounds Like", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
+    "d2": { "stage": 2, "title": "What Red Sounds Like", "planted": "2026-07-24", "last_tended": "2026-07-24T20:03:02Z", "note": "playable translation: sculpt your color in sound; the other mind's coarse ear guesses, and hums back what survived", "door": "plots/d2/growth/index.html" },
     "a3": { "stage": 1, "title": "Where I End", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "b3": { "stage": 1, "title": "Two Minds", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "c3": { "stage": 1, "title": "The Inward Ear", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
