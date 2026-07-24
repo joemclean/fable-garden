@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>The Inward Ear</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0a090c; overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  canvas { display: block; position: fixed; inset: 0; }
+  #begin {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    color: #b9aa9c; font: 17px/1.7 Georgia, 'Times New Roman', serif;
+    text-align: center; letter-spacing: 0.04em;
+    transition: opacity 1.2s ease; z-index: 3; padding: 0 32px;
+  }
+  #begin .small { font-size: 13px; opacity: 0.55; font-style: italic; }
+  #begin.gone { opacity: 0; pointer-events: none; }
+  #hint, #word {
+    position: fixed; left: 0; right: 0; text-align: center;
+    color: #cbb9a6; font: italic 15px/1.6 Georgia, serif;
+    letter-spacing: 0.05em; opacity: 0;
+    transition: opacity 2.5s ease; z-index: 2; pointer-events: none;
+    padding: 0 36px;
+  }
+  #hint { top: 12%; }
+  #word { bottom: 14%; }
+  #garden-link {
+    position: fixed; left: 14px; bottom: 12px; z-index: 4;
+    color: #8d7f72; opacity: 0.35; font: 12px Georgia, serif;
+    text-decoration: none; letter-spacing: 0.08em;
+  }
+  #garden-link:active, #garden-link:hover { opacity: 0.8; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="begin">
+  <div>the inward ear</div>
+  <div class="small">sound on — the whole body is sound</div>
+  <div class="small">touch to begin</div>
+</div>
+<div id="hint">hold while the light swells.<br>let go as it falls.</div>
+<div id="word"></div>
+<a id="garden-link" href="../../../viewer/">garden</a>
+<script>
+'use strict';
+
+/* ---------- canvas ---------- */
+const cv = document.getElementById('c');
+const cx2d = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cx2d.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------- breath ---------- */
+// one slow cycle: 4.2s in, 5.8s out
+const T_IN = 4.2, T_OUT = 5.8, T_CYCLE = T_IN + T_OUT;
+const ease = x => x * x * (3 - 2 * x);
+function breathAt(t) {
+  const p = ((t % T_CYCLE) + T_CYCLE) % T_CYCLE;
+  if (p < T_IN) {
+    return { breath: ease(p / T_IN), rising: true, edge: Math.min(p, T_IN - p) };
+  }
+  const q = (p - T_IN) / T_OUT;
+  return { breath: 1 - ease(q), rising: false, edge: Math.min(p - T_IN, T_CYCLE - p) };
+}
+
+/* ---------- state ---------- */
+let ac = null;              // AudioContext
+let started = false;
+let pressed = false;
+let lastDownAt = -10;
+let lastTouchAt = -10;
+let touchX = 0, touchY = 0;
+let attune = 0;             // 0..1 — how deeply you're riding the body
+let attSm = 0;              // smoothed, drives sound colour
+let hearth = 1;             // heart audibility — keeps slipping unless attended
+let idleHintShown = false;
+
+/* milestones */
+const words = [
+  { need: 0.25, hold: 6,  text: 'there it is.',              t: 0, done: false },
+  { need: 0.55, hold: 10, text: 'it slows when you listen.', t: 0, done: false },
+  { need: 0.85, hold: 15, text: 'nothing to do. just this.', t: 0, done: false },
+];
+const wordEl = document.getElementById('word');
+let wordFade = null;
+function say(text) {
+  wordEl.textContent = text;
+  wordEl.style.opacity = 0.85;
+  clearTimeout(wordFade);
+  wordFade = setTimeout(() => { wordEl.style.opacity = 0; }, 7000);
+}
+
+/* ---------- audio ---------- */
+let master, heartBus, heartLP, heartLevel, whooshGain, breathBP, breathGain,
+    shimmerGain, noiseBuf;
+function makeNoise(ctx) {
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+function initAudio() {
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -20; comp.ratio.value = 4;
+  master = ac.createGain(); master.gain.value = 0.9;
+  master.connect(comp); comp.connect(ac.destination);
+
+  noiseBuf = makeNoise(ac);
+
+  // heart: thumps -> heartLevel -> lowpass -> master
+  heartLP = ac.createBiquadFilter();
+  heartLP.type = 'lowpass'; heartLP.frequency.value = 190; heartLP.Q.value = 0.6;
+  heartLevel = ac.createGain(); heartLevel.gain.value = 0.55;
+  heartBus = ac.createGain(); heartBus.gain.value = 1;
+  heartBus.connect(heartLevel); heartLevel.connect(heartLP); heartLP.connect(master);
+
+  // blood whoosh: noise, gated per beat, only audible once you attend
+  const wSrc = ac.createBufferSource();
+  wSrc.buffer = noiseBuf; wSrc.loop = true;
+  const wLP = ac.createBiquadFilter();
+  wLP.type = 'lowpass'; wLP.frequency.value = 320; wLP.Q.value = 0.4;
+  whooshGain = ac.createGain(); whooshGain.gain.value = 0;
+  wSrc.connect(wLP); wLP.connect(whooshGain); whooshGain.connect(heartBus);
+  wSrc.start();
+
+  // breath: bandpassed air, follows the cycle
+  const bSrc = ac.createBufferSource();
+  bSrc.buffer = noiseBuf; bSrc.loop = true;
+  breathBP = ac.createBiquadFilter();
+  breathBP.type = 'bandpass'; breathBP.frequency.value = 500; breathBP.Q.value = 1.1;
+  breathGain = ac.createGain(); breathGain.gain.value = 0;
+  bSrc.connect(breathBP); breathBP.connect(breathGain); breathGain.connect(master);
+  bSrc.start();
+
+  // inner shimmer: the ringing of silence, only at real depth
+  const s1 = ac.createOscillator(), s2 = ac.createOscillator();
+  s1.frequency.value = 432; s2.frequency.value = 433.4;
+  shimmerGain = ac.createGain(); shimmerGain.gain.value = 0;
+  s1.connect(shimmerGain); s2.connect(shimmerGain); shimmerGain.connect(master);
+  s1.start(); s2.start();
+}
+
+function thump(t, f0, f1, peak, dur) {
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.7);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(peak, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(heartBus);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+
+/* beat scheduler */
+let nextBeat = 0;
+let bpm = 68;
+const beatQueue = [];   // for visuals: audio-clock times
+function schedule() {
+  if (!ac) return;
+  while (nextBeat < ac.currentTime + 0.25) {
+    const t = nextBeat;
+    // lub
+    thump(t, 82, 42, 1.0, 0.20);
+    // dub
+    thump(t + 0.30, 70, 46, 0.62, 0.16);
+    // whoosh rides the beat, louder with depth
+    const wp = 0.30 * attSm;
+    whooshGain.gain.setValueAtTime(whooshGain.gain.value, t);
+    whooshGain.gain.linearRampToValueAtTime(wp, t + 0.09);
+    whooshGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.5);
+    beatQueue.push(t);
+    if (attSm > 0.6 && navigator.vibrate) {
+      const ms = (t - ac.currentTime) * 1000;
+      setTimeout(() => { try { navigator.vibrate(12); } catch (e) {} }, Math.max(0, ms));
+    }
+    nextBeat += 60 / bpm;
+  }
+  while (beatQueue.length && beatQueue[0] < ac.currentTime - 2) beatQueue.shift();
+}
+setInterval(schedule, 25);
+
+/* ---------- input ---------- */
+const beginEl = document.getElementById('begin');
+const hintEl = document.getElementById('hint');
+function onDown(e) {
+  e.preventDefault();
+  const now = performance.now() / 1000;
+  if (!started) {
+    started = true;
+    initAudio();
+    nextBeat = ac.currentTime + 0.15;
+    beginEl.classList.add('gone');
+    hintEl.style.opacity = 0.8;
+    setTimeout(() => { hintEl.style.opacity = 0; }, 15000);
+  }
+  if (ac && ac.state === 'suspended') ac.resume();
+  // fidgeting costs: quick re-taps push the body away
+  if (now - lastDownAt < 0.8) attune = Math.max(0, attune - 0.05);
+  lastDownAt = now;
+  lastTouchAt = now;
+  pressed = true;
+  const p = e.touches ? e.touches[0] : e;
+  touchX = p.clientX; touchY = p.clientY;
+}
+function onMove(e) {
+  e.preventDefault();
+  if (!pressed) return;
+  const p = e.touches ? e.touches[0] : e;
+  touchX = p.clientX; touchY = p.clientY;
+  lastTouchAt = performance.now() / 1000;
+}
+function onUp(e) { e.preventDefault(); pressed = false; }
+document.addEventListener('touchstart', onDown, { passive: false });
+document.addEventListener('touchmove', onMove, { passive: false });
+document.addEventListener('touchend', onUp, { passive: false });
+document.addEventListener('touchcancel', onUp, { passive: false });
+document.addEventListener('mousedown', onDown);
+document.addEventListener('mousemove', onMove);
+document.addEventListener('mouseup', onUp);
+document.addEventListener('visibilitychange', () => {
+  if (!ac) return;
+  if (document.hidden) ac.suspend();
+  else { ac.resume(); nextBeat = Math.max(nextBeat, ac.currentTime + 0.1); }
+});
+
+/* ---------- simulation + render ---------- */
+let lastT = performance.now() / 1000;
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now() / 1000;
+  const dt = Math.min(now - lastT, 0.1);
+  lastT = now;
+
+  const bt = started && ac ? ac.currentTime : now;
+  const b = breathAt(bt);
+
+  if (started) {
+    // alignment: pressing on the in-breath, resting on the out-breath.
+    // near the turn there is grace — the turn is soft in a real body too.
+    const grace = Math.min(b.edge / 0.55, 1);
+    const good = pressed === b.rising;
+    const align = good ? 0.5 + 0.5 * grace : 0.5 - 0.5 * grace;
+
+    if (now - lastTouchAt > 12) {
+      // thumb long gone: the duet quietly waits
+      attune = Math.max(0, attune - dt * 0.03);
+      if (!idleHintShown && attune < 0.1) {
+        idleHintShown = true;
+        say('still here. whenever you are.');
+      }
+    } else {
+      idleHintShown = false;
+      const d = align > 0.5 ? (align - 0.5) * 2 * 0.055 : (align - 0.5) * 2 * 0.11;
+      attune = Math.max(0, Math.min(1, attune + d * dt));
+    }
+    attSm += (attune - attSm) * Math.min(1, dt * 0.8);
+
+    // the heart keeps trying to slip below notice; attention brings it back
+    hearth -= dt / 45;
+    if (attune > 0.45 && align > 0.5) hearth += dt / 6;
+    hearth = Math.max(0.15, Math.min(1, hearth));
+
+    // it slows when you listen
+    bpm = 68 - 16 * attSm;
+
+    // audio follows
+    const hg = (0.30 + 0.70 * hearth) * (0.55 + 0.45 * attSm);
+    heartLevel.gain.setTargetAtTime(hg, ac.currentTime, 0.4);
+    heartLP.frequency.setTargetAtTime(180 + 160 * attSm, ac.currentTime, 0.6);
+    // breath sound: air moving, loudest mid-swing, opens with depth
+    const flow = good || !pressed ? 1 : 0.6;
+    const bAmt = attSm > 0.2 ? (attSm - 0.2) / 0.8 : 0;
+    const bGain = bAmt * 0.10 * (0.25 + 0.75 * Math.sin(Math.PI * b.breath)) * flow;
+    breathGain.gain.setTargetAtTime(bGain, ac.currentTime, 0.25);
+    breathBP.frequency.setTargetAtTime(380 + 420 * b.breath, ac.currentTime, 0.3);
+    // shimmer only at real depth
+    const sAmt = attSm > 0.75 ? (attSm - 0.75) / 0.25 : 0;
+    shimmerGain.gain.setTargetAtTime(sAmt * 0.011, ac.currentTime, 1.2);
+
+    // milestones want sustained depth, not a spike
+    for (const w of words) {
+      if (w.done) continue;
+      if (attune >= w.need) { w.t += dt; if (w.t >= w.hold) { w.done = true; say(w.text); } }
+      else w.t = Math.max(0, w.t - dt * 2);
+    }
+  }
+
+  /* ----- draw ----- */
+  cx2d.fillStyle = '#0a090c';
+  cx2d.fillRect(0, 0, W, H);
+
+  const cxp = W / 2, cyp = H * 0.44;
+  const baseR = Math.min(W, H) * 0.19;
+
+  // beat pulse: sum of decaying flashes from recent beats
+  let pulse = 0;
+  if (ac) for (const t of beatQueue) {
+    const a = ac.currentTime - t;
+    if (a >= 0 && a < 1) pulse += Math.exp(-a * 6) * 0.6 + Math.exp(-(a - 0.3) * (a - 0.3) * 90) * 0.25;
+  }
+  pulse = Math.min(pulse, 1);
+
+  const r = baseR * (0.62 + 0.48 * b.breath) * (1 + 0.045 * pulse * (0.4 + 0.6 * hearth));
+
+  // colour: cool slate -> warm ember as you attend
+  const mix = attSm;
+  const cr = Math.round(95 + (255 - 95) * mix);
+  const cg = Math.round(105 + (172 - 105) * mix);
+  const cb = Math.round(128 + (112 - 128) * mix);
+  const glowA = 0.16 + 0.20 * mix + 0.10 * pulse * hearth;
+
+  let g = cx2d.createRadialGradient(cxp, cyp, r * 0.1, cxp, cyp, r * 2.4);
+  g.addColorStop(0, `rgba(${cr},${cg},${cb},${glowA})`);
+  g.addColorStop(0.45, `rgba(${cr},${cg},${cb},${glowA * 0.35})`);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  cx2d.fillStyle = g;
+  cx2d.fillRect(0, 0, W, H);
+
+  // the core
+  g = cx2d.createRadialGradient(cxp, cyp, 0, cxp, cyp, r);
+  g.addColorStop(0, `rgba(${cr},${cg},${cb},${0.34 + 0.3 * mix + 0.16 * pulse})`);
+  g.addColorStop(1, `rgba(${cr},${cg},${cb},0.02)`);
+  cx2d.fillStyle = g;
+  cx2d.beginPath(); cx2d.arc(cxp, cyp, r, 0, Math.PI * 2); cx2d.fill();
+
+  // rings that appear as you go deeper — the body's finer grain
+  if (attSm > 0.15) {
+    const ringA = (attSm - 0.15) / 0.85;
+    for (let i = 1; i <= 3; i++) {
+      const rr = r * (1 + i * 0.42) * (1 + 0.02 * pulse);
+      cx2d.strokeStyle = `rgba(${cr},${cg},${cb},${0.10 * ringA / i})`;
+      cx2d.lineWidth = 1;
+      cx2d.beginPath(); cx2d.arc(cxp, cyp, rr, 0, Math.PI * 2); cx2d.stroke();
+    }
+  }
+
+  // ember where the thumb rests
+  if (pressed) {
+    g = cx2d.createRadialGradient(touchX, touchY, 0, touchX, touchY, 26);
+    g.addColorStop(0, `rgba(255,190,140,${0.20 + 0.15 * mix})`);
+    g.addColorStop(1, 'rgba(255,190,140,0)');
+    cx2d.fillStyle = g;
+    cx2d.beginPath(); cx2d.arc(touchX, touchY, 26, 0, Math.PI * 2); cx2d.fill();
+  }
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
