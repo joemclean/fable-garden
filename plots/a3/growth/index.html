@@ -1,0 +1,458 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Where I End</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#120f14; overflow:hidden; }
+  body { touch-action:none; -webkit-user-select:none; user-select:none;
+         font-family:Georgia, 'Times New Roman', serif; }
+  canvas { display:block; width:100vw; height:100vh; }
+  #veil { position:fixed; inset:0; display:flex; flex-direction:column;
+          align-items:center; justify-content:center; text-align:center;
+          background:rgba(18,15,20,.92); color:#d8cfc4; z-index:10;
+          transition:opacity 1.2s ease; padding:0 2em; }
+  #veil.gone { opacity:0; pointer-events:none; }
+  #veil h1 { font-weight:normal; font-style:italic; letter-spacing:.14em;
+             font-size:1.5em; margin:0 0 .8em; }
+  #veil p { margin:.3em 0; font-size:.95em; opacity:.75; line-height:1.6; }
+  #veil .small { font-size:.8em; opacity:.5; margin-top:2.2em; }
+  #hint { position:fixed; left:0; right:0; bottom:12vh; text-align:center;
+          color:#d8cfc4; font-style:italic; font-size:.9em; opacity:0;
+          transition:opacity 1.5s ease; pointer-events:none; z-index:5;
+          padding:0 2em; line-height:1.7; }
+  #word { position:fixed; left:0; right:0; top:9vh; text-align:center;
+          color:#d8cfc4; font-style:italic; font-size:1em; opacity:0;
+          transition:opacity 2s ease; pointer-events:none; z-index:5; }
+  #home { position:fixed; left:12px; bottom:10px; z-index:6;
+          color:#d8cfc4; opacity:.28; font-size:.75em; text-decoration:none;
+          font-family:Georgia, serif; }
+  #home:hover { opacity:.7; }
+</style>
+<div id="veil">
+  <h1>WHERE I END</h1>
+  <p>you are the small warm thing.<br>what you touch may become you.</p>
+  <p class="small">best with sound &mdash; the body lives in it<br>touch to begin</p>
+</div>
+<div id="hint">drag to wander &middot; linger on what you meet<br>tap a part of yourself to let it go</div>
+<div id="word"></div>
+<a id="home" href="../../../viewer/">&larr; the garden</a>
+<canvas id="cv"></canvas>
+<script>
+'use strict';
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function fit(){
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener('resize', fit); fit();
+
+/* ---------- the self ---------- */
+const self_ = {
+  x: W/2, y: H*0.55, vx: 0, vy: 0,
+  hue: 38, sat: 30,          // pale warm, before it has eaten anything
+  parts: [],                 // what has become me
+  seed: Math.random()*7
+};
+function baseR(){ return Math.min(W, H) * 0.105; }
+function selfR(){ return baseR() * Math.sqrt(1 + 0.38 * self_.parts.length); }
+
+/* ---------- pitches: a warm pentatonic field ---------- */
+const RATIOS = [1, 9/8, 5/4, 3/2, 5/3, 2, 9/4, 5/2, 3];
+function pickPitch(){ return 196 * RATIOS[(Math.random()*RATIOS.length)|0]; }
+
+/* ---------- motes: the not-yet-you ---------- */
+const motes = [];
+function spawnMote(fromX, fromY, vx, vy, inherit){
+  const edge = (Math.random()*4)|0;
+  const m = inherit || {};
+  const mote = {
+    x: fromX !== undefined ? fromX :
+       (edge===0? -20 : edge===1? W+20 : Math.random()*W),
+    y: fromY !== undefined ? fromY :
+       (edge===0||edge===1? Math.random()*H : edge===2? -20 : H+20),
+    vx: vx !== undefined ? vx : (Math.random()-.5)*18,
+    vy: vy !== undefined ? vy : (Math.random()-.5)*18,
+    hue: m.hue !== undefined ? m.hue : Math.random()*360,
+    pitch: m.pitch || pickPitch(),
+    restless: m.restless !== undefined ? m.restless : Math.random() < 0.34,
+    size: 6.5, ph: Math.random()*7,
+    taste: 0, cool: 0, previewOsc: null, previewGain: null
+  };
+  motes.push(mote);
+}
+for (let i=0;i<8;i++) spawnMote();
+
+/* ---------- audio ---------- */
+let ctx = null, master = null, started = false;
+let nextBeat = 0, skipBeats = 0, lastVisBeat = -9;
+function bpm(){
+  let b = 66 - 2.6 * self_.parts.length;
+  return Math.max(40, Math.min(72, b));
+}
+function initAudio(){
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 6;
+  master = ctx.createGain(); master.gain.value = 0.9;
+  master.connect(comp); comp.connect(ctx.destination);
+  nextBeat = ctx.currentTime + 0.3;
+  setInterval(schedule, 30);
+}
+function thump(t, f0, f1, vol, dur){
+  const o = ctx.createOscillator(), gn = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  gn.gain.setValueAtTime(0.0001, t);
+  gn.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(gn); gn.connect(master);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function ping(t, freq, pan, vol, sour){
+  const o = ctx.createOscillator(), gn = ctx.createGain();
+  const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  o.type = 'triangle';
+  o.frequency.value = freq;
+  if (sour) o.detune.value = 35 + Math.random()*30;   // a sour lean
+  gn.gain.setValueAtTime(0.0001, t);
+  gn.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+  o.connect(gn);
+  if (p){ p.pan.value = pan; gn.connect(p); p.connect(master); }
+  else gn.connect(master);
+  o.start(t); o.stop(t + 0.65);
+  if (sour){
+    const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+    o2.type = 'sine'; o2.frequency.value = freq * 16/15;
+    g2.gain.setValueAtTime(0.0001, t);
+    g2.gain.exponentialRampToValueAtTime(vol*0.5, t + 0.02);
+    g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o2.connect(g2); g2.connect(master);
+    o2.start(t); o2.stop(t + 0.4);
+  }
+}
+function gulp(){
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(), gn = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(340, t);
+  o.frequency.exponentialRampToValueAtTime(62, t + 0.22);
+  gn.gain.setValueAtTime(0.0001, t);
+  gn.gain.exponentialRampToValueAtTime(0.22, t + 0.03);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  o.connect(gn); gn.connect(master);
+  o.start(t); o.stop(t + 0.35);
+}
+function sigh(){
+  if (!ctx) return;
+  const t = ctx.currentTime, dur = 0.7;
+  const len = ctx.sampleRate * dur;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<len;i++) d[i] = (Math.random()*2-1) * (1 - i/len);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(1400, t);
+  f.frequency.exponentialRampToValueAtTime(220, t + dur);
+  const gn = ctx.createGain(); gn.gain.value = 0.14;
+  src.connect(f); f.connect(gn); gn.connect(master);
+  src.start(t);
+}
+function schedule(){
+  const ahead = ctx.currentTime + 0.14;
+  while (nextBeat < ahead){
+    playBeat(nextBeat);
+    nextBeat += 60 / bpm();
+  }
+}
+function playBeat(t){
+  if (skipBeats > 0){ skipBeats--; return; }   // a beat that simply isn't there
+  lastVisBeat = t;
+  thump(t, 82, 46, 0.5, 0.16);                 // lub
+  thump(t + 0.24, 66, 40, 0.3, 0.13);          // dub
+  const r = selfR();
+  for (const p of self_.parts){
+    if (p.appear < 0.6) continue;
+    const px = Math.cos(p.ang) * p.orbR * (r - 18);
+    const pan = Math.max(-0.8, Math.min(0.8, px / r));
+    const late = p.restlessNow ? 0.07 + Math.random()*0.07 : 0.02;
+    ping(t + late, p.pitch, pan, 0.055, p.restlessNow);
+    p.flashAt = t + late;
+  }
+}
+function taughtPreview(m, on){
+  if (!ctx) return;
+  if (on && !m.previewOsc){
+    const o = ctx.createOscillator(), gn = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = m.pitch * 2;
+    gn.gain.value = 0.0001;
+    o.connect(gn); gn.connect(master); o.start();
+    m.previewOsc = o; m.previewGain = gn;
+  }
+  if (m.previewGain){
+    const target = on ? 0.028 * m.taste : 0.0001;
+    m.previewGain.gain.setTargetAtTime(target, ctx.currentTime, 0.08);
+  }
+  if (!on && m.previewOsc){
+    const o = m.previewOsc;
+    setTimeout(()=>{ try{o.stop();}catch(e){} }, 400);
+    m.previewOsc = null; m.previewGain = null;
+  }
+}
+
+/* ---------- words, few and quiet ---------- */
+const wordEl = document.getElementById('word');
+let wordTimer = 0;
+function say(txt){
+  wordEl.textContent = txt;
+  wordEl.style.opacity = 0.6;
+  clearTimeout(wordTimer);
+  wordTimer = setTimeout(()=>{ wordEl.style.opacity = 0; }, 4200);
+}
+const MILESTONES = {1:'one thing is you now', 4:'you are getting wider', 7:'where do you end?'};
+
+/* ---------- input ---------- */
+let touch = null, downAt = 0, downX = 0, downY = 0, moved = 0;
+const veil = document.getElementById('veil');
+addEventListener('pointerdown', e=>{
+  if (!started){
+    started = true;
+    initAudio();
+    veil.classList.add('gone');
+    const hint = document.getElementById('hint');
+    hint.style.opacity = 0.55;
+    setTimeout(()=>{ hint.style.opacity = 0; }, 7000);
+    return;
+  }
+  if (ctx && ctx.state === 'suspended') ctx.resume();
+  touch = {x:e.clientX, y:e.clientY};
+  downAt = performance.now(); downX = e.clientX; downY = e.clientY; moved = 0;
+});
+addEventListener('pointermove', e=>{
+  if (touch){
+    moved += Math.hypot(e.clientX-touch.x, e.clientY-touch.y);
+    touch.x = e.clientX; touch.y = e.clientY;
+  }
+});
+addEventListener('pointerup', e=>{
+  const quick = performance.now() - downAt < 260 && moved < 12;
+  if (quick) tryRelease(e.clientX, e.clientY);
+  touch = null;
+});
+addEventListener('pointercancel', ()=>{ touch = null; });
+
+function tryRelease(x, y){
+  const r = selfR();
+  let best = null, bestD = 44;
+  for (const p of self_.parts){
+    if (p.appear < 1) continue;
+    const px = self_.x + Math.cos(p.ang) * p.orbR * (r - 18);
+    const py = self_.y + Math.sin(p.ang) * p.orbR * (r - 18);
+    const d = Math.hypot(x - px, y - py);
+    if (d < bestD){ bestD = d; best = p; }
+  }
+  if (!best) return;
+  const i = self_.parts.indexOf(best);
+  self_.parts.splice(i, 1);
+  // it leaves through the border, just past reach, and is other again
+  const ex = self_.x + Math.cos(best.ang) * (r + 34);
+  const ey = self_.y + Math.sin(best.ang) * (r + 34);
+  spawnMote(ex, ey, Math.cos(best.ang)*26, Math.sin(best.ang)*26,
+            {hue:best.hue, pitch:best.pitch, restless:best.restlessTemper});
+  motes[motes.length-1].cool = 2.5;
+  skipBeats = 1;                       // its beat drops out — you feel the hole
+  sigh();
+  if (self_.parts.length === 0) say('just you again');
+}
+
+/* ---------- absorption ---------- */
+function absorb(m){
+  taughtPreview(m, false);
+  motes.splice(motes.indexOf(m), 1);
+  const part = {
+    pitch: m.pitch, hue: m.hue,
+    restlessTemper: m.restless, restlessNow: false,
+    settledAt: performance.now(),
+    ang: Math.atan2(m.y - self_.y, m.x - self_.x),
+    orbR: 0.35 + Math.random()*0.45,
+    spd: (Math.random() < .5 ? -1 : 1) * (0.15 + Math.random()*0.25),
+    appear: 0, flashAt: -9,
+    entryDX: m.x - self_.x, entryDY: m.y - self_.y
+  };
+  self_.parts.push(part);
+  gulp();
+  const n = self_.parts.length;
+  if (MILESTONES[n]) say(MILESTONES[n]);
+  setTimeout(()=>{ if (motes.length < 8) spawnMote(); }, 3000 + Math.random()*4000);
+}
+
+/* ---------- simulation ---------- */
+let last = performance.now();
+function step(now){
+  const dt = Math.min(0.05, (now - last)/1000); last = now;
+  const r = selfR();
+
+  // move toward the finger, heavier the wider you are
+  if (touch){
+    const heft = 1 + self_.parts.length * 0.12;
+    self_.vx += (touch.x - self_.x) * 3.2 / heft * dt;
+    self_.vy += (touch.y - self_.y) * 3.2 / heft * dt;
+  }
+  self_.vx *= Math.pow(0.12, dt); self_.vy *= Math.pow(0.12, dt);
+  self_.x += self_.vx * dt; self_.y += self_.vy * dt;
+  self_.x = Math.max(r*0.4, Math.min(W - r*0.4, self_.x));
+  self_.y = Math.max(r*0.4, Math.min(H - r*0.4, self_.y));
+
+  // hue drifts toward what you have eaten
+  if (self_.parts.length){
+    let sx = 0, sy = 0;
+    for (const p of self_.parts){
+      sx += Math.cos(p.hue * Math.PI/180); sy += Math.sin(p.hue * Math.PI/180);
+    }
+    const target = Math.atan2(sy, sx) * 180/Math.PI;
+    let d = ((target - self_.hue + 540) % 360) - 180;
+    self_.hue += d * 0.3 * dt;
+    self_.sat += (46 - self_.sat) * 0.3 * dt;
+  } else {
+    self_.sat += (30 - self_.sat) * 0.3 * dt;
+  }
+
+  // parts orbit; the restless grow restless a while after settling
+  for (const p of self_.parts){
+    p.ang += p.spd * dt;
+    if (p.appear < 1) p.appear = Math.min(1, p.appear + dt/0.7);
+    if (p.restlessTemper && !p.restlessNow && now - p.settledAt > 14000)
+      p.restlessNow = true;
+  }
+
+  // motes drift and meet the border
+  for (let i = motes.length - 1; i >= 0; i--){
+    const m = motes[i];
+    m.ph += dt;
+    m.vx += Math.sin(m.ph * 0.7 + m.hue) * 4 * dt;
+    m.vy += Math.cos(m.ph * 0.9 + m.hue) * 4 * dt;
+    const sp = Math.hypot(m.vx, m.vy);
+    if (sp > 26){ m.vx *= 26/sp; m.vy *= 26/sp; }
+    if (m.restless){ m.x += (Math.random()-.5)*1.1; m.y += (Math.random()-.5)*1.1; }
+    m.x += m.vx * dt; m.y += m.vy * dt;
+    if (m.x < -40) m.x = W + 30; if (m.x > W + 40) m.x = -30;
+    if (m.y < -40) m.y = H + 30; if (m.y > H + 40) m.y = -30;
+
+    if (m.cool > 0) m.cool -= dt;
+    const d = Math.hypot(m.x - self_.x, m.y - self_.y);
+    const touching = m.cool <= 0 && d < r + 22;
+    if (touching){
+      m.taste = Math.min(1, m.taste + dt / 0.9);
+      // the border tugs, gently
+      const pull = 14 * m.taste;
+      m.vx += (self_.x - m.x)/d * pull * dt * 8;
+      m.vy += (self_.y - m.y)/d * pull * dt * 8;
+      taughtPreview(m, true);
+      if (m.taste >= 1){ absorb(m); continue; }
+    } else if (m.taste > 0){
+      m.taste = Math.max(0, m.taste - dt / 0.5);
+      if (m.taste === 0) taughtPreview(m, false);
+      else taughtPreview(m, true);
+    }
+  }
+  if (motes.length < 5 && Math.random() < dt * 0.4) spawnMote();
+
+  draw(now);
+  requestAnimationFrame(step);
+}
+
+/* ---------- drawing ---------- */
+function draw(now){
+  g.fillStyle = '#120f14';
+  g.fillRect(0, 0, W, H);
+  const r = selfR();
+  const aNow = ctx ? ctx.currentTime : 0;
+  const beatEnv = ctx ? Math.exp(-Math.max(0, aNow - lastVisBeat) * 5.5) : 0;
+  const t = now / 1000;
+
+  // motes outside
+  for (const m of motes){
+    const fl = 0.55 + 0.2 * Math.sin(t * 2 + m.ph * 5);
+    g.beginPath();
+    g.arc(m.x, m.y, m.size + m.taste * 2, 0, 7);
+    g.fillStyle = `hsla(${m.hue}, ${m.restless ? 85 : 60}%, ${m.restless ? 68 : 60}%, ${fl})`;
+    g.shadowColor = `hsla(${m.hue}, 80%, 60%, .8)`;
+    g.shadowBlur = 12 + m.taste * 14;
+    g.fill();
+    g.shadowBlur = 0;
+    if (m.taste > 0){
+      // the border reaches for it
+      g.beginPath();
+      g.moveTo(m.x, m.y);
+      const dx = self_.x - m.x, dy = self_.y - m.y, dl = Math.hypot(dx, dy);
+      g.lineTo(m.x + dx/dl * m.taste * 26, m.y + dy/dl * m.taste * 26);
+      g.strokeStyle = `hsla(${self_.hue}, 50%, 70%, ${m.taste * 0.5})`;
+      g.lineWidth = 1.5;
+      g.stroke();
+    }
+  }
+
+  // the body
+  const pulse = 1 + beatEnv * 0.045;
+  const hue = ((self_.hue % 360) + 360) % 360;
+  const grad = g.createRadialGradient(self_.x, self_.y, r*0.1, self_.x, self_.y, r*pulse);
+  grad.addColorStop(0, `hsla(${hue}, ${self_.sat}%, 30%, .95)`);
+  grad.addColorStop(0.8, `hsla(${hue}, ${self_.sat}%, 20%, .85)`);
+  grad.addColorStop(1, `hsla(${hue}, ${self_.sat}%, 14%, .0)`);
+  g.beginPath();
+  boundaryPath(r * pulse * 1.12, t);
+  g.fillStyle = grad;
+  g.fill();
+
+  // the boundary itself — the line where I end
+  g.beginPath();
+  boundaryPath(r * pulse, t);
+  g.strokeStyle = `hsla(${hue}, ${self_.sat + 25}%, 68%, ${0.35 + beatEnv * 0.45})`;
+  g.lineWidth = 1.6 + beatEnv * 1.4;
+  g.shadowColor = `hsla(${hue}, 70%, 65%, .6)`;
+  g.shadowBlur = 10 + beatEnv * 18;
+  g.stroke();
+  g.shadowBlur = 0;
+
+  // parts inside — each one still itself, orbiting in you
+  for (const p of self_.parts){
+    let px, py;
+    const ox = Math.cos(p.ang) * p.orbR * (r - 18);
+    const oy = Math.sin(p.ang) * p.orbR * (r - 18);
+    if (p.appear < 1){
+      const e = 1 - Math.pow(1 - p.appear, 2);
+      px = self_.x + p.entryDX * (1 - e) + ox * e;
+      py = self_.y + p.entryDY * (1 - e) + oy * e;
+    } else { px = self_.x + ox; py = self_.y + oy; }
+    if (p.restlessNow){ px += (Math.random()-.5)*2.4; py += (Math.random()-.5)*2.4; }
+    const fEnv = ctx ? Math.exp(-Math.max(0, aNow - p.flashAt) * 4) : 0;
+    g.beginPath();
+    g.arc(px, py, 5 + fEnv * 3.5, 0, 7);
+    g.fillStyle = `hsla(${p.hue}, 75%, ${62 + fEnv*20}%, ${0.75 + fEnv*0.25})`;
+    g.shadowColor = `hsla(${p.hue}, 80%, 65%, .9)`;
+    g.shadowBlur = 8 + fEnv * 20;
+    g.fill();
+    g.shadowBlur = 0;
+  }
+}
+function boundaryPath(rr, t){
+  const N = 72;
+  for (let i = 0; i <= N; i++){
+    const a = i / N * Math.PI * 2;
+    const wob = 1
+      + 0.040 * Math.sin(3*a + t*1.25 + self_.seed)
+      + 0.026 * Math.sin(5*a - t*0.9 + self_.seed*2)
+      + 0.014 * Math.sin(8*a + t*1.7);
+    const x = self_.x + Math.cos(a) * rr * wob;
+    const y = self_.y + Math.sin(a) * rr * wob;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.closePath();
+}
+
+requestAnimationFrame(step);
+</script>
