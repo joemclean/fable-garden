@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Who You Were</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #08090c;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #stage { position: fixed; inset: 0; display: block; }
+  #words {
+    position: fixed; left: 0; right: 0; top: 7%;
+    text-align: center; pointer-events: none;
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #d8d4c8;
+    padding: 0 9vw;
+  }
+  #line1 {
+    font-size: clamp(19px, 5.4vw, 30px);
+    line-height: 1.45; letter-spacing: 0.02em;
+    opacity: 0; transition: opacity 1.4s ease;
+    text-shadow: 0 0 24px rgba(0,0,0,0.9);
+  }
+  #line2 {
+    margin-top: 0.9em;
+    font-size: clamp(13px, 3.6vw, 17px);
+    line-height: 1.5; letter-spacing: 0.04em;
+    font-style: italic;
+    color: #9a968b;
+    opacity: 0; transition: opacity 1.4s ease;
+    text-shadow: 0 0 20px rgba(0,0,0,0.9);
+  }
+  #memo {
+    position: fixed; left: 0; right: 0; bottom: 3.2%;
+    text-align: center; pointer-events: none;
+    font-family: Georgia, serif; font-style: italic;
+    font-size: clamp(11px, 3vw, 13px);
+    color: #6a675e; opacity: 0; transition: opacity 1.4s ease;
+  }
+  #garden {
+    position: fixed; right: 12px; bottom: 10px;
+    font-family: Georgia, serif; font-style: italic;
+    font-size: 12px; color: #56534b; text-decoration: none;
+    opacity: 0.55; z-index: 5;
+  }
+  #garden:hover { color: #8a867a; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="words"><div id="line1"></div><div id="line2"></div></div>
+<div id="memo"></div>
+<a id="garden" href="../../../viewer/">the garden</a>
+<script>
+'use strict';
+
+/* ---------- persistence ---------- */
+const KEY = 'd3.whoYouWere.v1';
+let storageOK = true;
+function loadSelf() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { storageOK = false; return null; }
+}
+function saveSelf(s) {
+  try { localStorage.setItem(KEY, JSON.stringify(s)); }
+  catch (e) { storageOK = false; }
+}
+let self0 = loadSelf();
+if (self0 && (!Array.isArray(self0.motif) || self0.motif.length < 1)) self0 = null;
+
+/* ---------- notes / strings ---------- */
+const FREQS = [261.63, 293.66, 329.63, 392.00, 440.00]; /* C D E G A */
+const NSTR = 5;
+
+/* ---------- audio ---------- */
+let AC = null, master = null;
+const buffers = [];
+function makePluck(freq) {
+  const sr = AC.sampleRate, dur = 2.4;
+  const N = Math.max(2, Math.round(sr / freq));
+  const buf = AC.createBuffer(1, Math.floor(sr * dur), sr);
+  const d = buf.getChannelData(0);
+  const ring = new Float32Array(N);
+  for (let i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;
+  let idx = 0;
+  const damp = 0.9958 + 0.0022 * Math.min(1, freq / 440);
+  for (let i = 0; i < d.length; i++) {
+    const cur = ring[idx], nxt = ring[(idx + 1) % N];
+    d[i] = cur;
+    ring[idx] = damp * (cur + nxt) * 0.5;
+    idx = (idx + 1) % N;
+  }
+  return buf;
+}
+function initAudio() {
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain();
+  master.gain.value = 0.85;
+  const lp = AC.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 4200;
+  master.connect(lp); lp.connect(AC.destination);
+  for (let i = 0; i < NSTR; i++) buffers[i] = makePluck(FREQS[i]);
+}
+function pluck(i, vol) {
+  if (!AC) return;
+  if (AC.state === 'suspended') AC.resume();
+  const src = AC.createBufferSource();
+  src.buffer = buffers[i];
+  const g = AC.createGain();
+  g.gain.value = vol == null ? 0.9 : vol;
+  src.connect(g); g.connect(master);
+  src.start();
+  strings[i].pluckAt = performance.now();
+}
+function gleam() { /* soft confirmation shimmer: high octave of the last note */
+  if (!AC) return;
+  const t0 = AC.currentTime;
+  [0, 2, 4].forEach((n, k) => {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sine'; o.frequency.value = FREQS[n] * 2;
+    g.gain.setValueAtTime(0.0001, t0 + k * 0.09);
+    g.gain.exponentialRampToValueAtTime(0.12, t0 + k * 0.09 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + k * 0.09 + 1.2);
+    o.connect(g); g.connect(master);
+    o.start(t0 + k * 0.09); o.stop(t0 + k * 0.09 + 1.3);
+  });
+}
+function frayNoise() { /* dull muted thud when the thread slips */
+  if (!AC) return;
+  const t0 = AC.currentTime;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'triangle'; o.frequency.value = 68;
+  g.gain.setValueAtTime(0.22, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.45);
+  o.connect(g); g.connect(master);
+  o.start(t0); o.stop(t0 + 0.5);
+}
+
+/* ---------- canvas ---------- */
+const cv = document.getElementById('stage');
+const cx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  layoutStrings(); layoutThread();
+}
+window.addEventListener('resize', resize);
+
+/* strings */
+const strings = [];
+function layoutStrings() {
+  const top = H * 0.50, bot = H * 0.93;
+  for (let i = 0; i < NSTR; i++) {
+    strings[i] = strings[i] || { pluckAt: -1e9 };
+    strings[i].x = W * (0.16 + i * 0.17);
+    strings[i].top = top; strings[i].bot = bot;
+  }
+}
+
+/* the thread: beads along a slow spiral, one bead per note of the motif */
+let beadPos = [];
+function layoutThread() { beadPos = []; }
+function beadAt(k, total) {
+  /* archimedean spiral, gently squashed; recomputed lazily per frame count */
+  const cxp = W * 0.5, cyp = H * 0.27;
+  const turns = 0.16 + total * 0.052;
+  const t = total <= 1 ? 0 : k / (total - 1);
+  const ang = -Math.PI / 2 + t * turns * Math.PI * 2;
+  const r = (12 + t * Math.min(W, H) * (0.075 + total * 0.0115));
+  return { x: cxp + Math.cos(ang) * r * 1.15, y: cyp + Math.sin(ang) * r * 0.9 };
+}
+
+/* dust */
+const dust = [];
+for (let i = 0; i < 40; i++) dust.push({
+  x: Math.random(), y: Math.random(),
+  r: 0.4 + Math.random() * 1.1,
+  vx: (Math.random() - 0.5) * 0.00005, vy: -0.00002 - Math.random() * 0.00006,
+  p: Math.random() * Math.PI * 2
+});
+
+/* ---------- state ---------- */
+const hueBase = self0 && typeof self0.hue === 'number' ? self0.hue : Math.floor(40 + Math.random() * 280);
+let selfState = self0 || { motif: [], visits: [], hue: hueBase, began: new Date().toISOString() };
+const returning = !!self0;
+
+let phase = 'gate';       /* gate | compose | seal | recall | listen | extend | coda */
+let progress = 0;         /* matched notes during seal/recall */
+let attempts = 0;
+let frayed = false;
+let playing = false;
+let composeBuf = [];
+let litBeads = new Set(); /* beads currently lit (matched or playing) */
+let flashFray = 0;        /* timestamp of last fray flash */
+let newBeadAt = -1e9;     /* animate the newest bead in */
+let extendIndex = -1;
+
+const line1 = document.getElementById('line1');
+const line2 = document.getElementById('line2');
+const memo = document.getElementById('memo');
+function say(a, b, delay) {
+  line1.style.opacity = 0; line2.style.opacity = 0;
+  setTimeout(() => {
+    line1.textContent = a || '';
+    line2.textContent = b || '';
+    line1.style.opacity = a ? 1 : 0;
+    line2.style.opacity = b ? 1 : 0;
+  }, delay == null ? 700 : delay);
+}
+function note2(b) { line2.textContent = b || ''; line2.style.opacity = b ? 1 : 0; }
+function showMemo(t) { memo.textContent = t; memo.style.opacity = t ? 1 : 0; }
+
+function daysAgo(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const d = Math.floor(ms / 86400000);
+  if (d <= 0) { const h = Math.floor(ms / 3600000); return h <= 1 ? 'not long ago' : h + ' hours ago'; }
+  return d === 1 ? 'a day ago' : d + ' days ago';
+}
+
+/* ---------- motif playback ---------- */
+function playMotif(seq, done, tempo) {
+  playing = true; litBeads.clear();
+  const step = tempo || 430;
+  let k = 0;
+  function tick() {
+    if (k < seq.length) {
+      pluck(seq[k], 0.85);
+      litBeads.add(k);
+      k++;
+      setTimeout(tick, step);
+    } else {
+      setTimeout(() => { playing = false; litBeads.clear(); if (done) done(); }, 500);
+    }
+  }
+  tick();
+}
+
+/* ---------- phases ---------- */
+function enterGate() {
+  phase = 'gate';
+  if (returning) say('You have been here before.', 'touch anywhere to return');
+  else say('No one is here yet.', 'touch anywhere to wake the strings');
+}
+function enterCompose() {
+  phase = 'compose'; composeBuf = [];
+  say('Leave a phrase — three notes.', 'it will be who you are');
+}
+function enterSeal() {
+  phase = 'seal'; progress = 0;
+  say('Now play it back, so it is yours.', '');
+}
+function enterRecall() {
+  phase = 'recall'; progress = 0; attempts = 0; frayed = false;
+  const when = selfState.visits.length
+    ? selfState.visits[selfState.visits.length - 1].t : selfState.began;
+  say('Play the phrase you left ' + daysAgo(when) + '.',
+      selfState.motif.length + ' notes — prove you are still you');
+}
+function enterListen() {
+  phase = 'listen';
+  say('The thread is fraying.', 'touch the spiral to hear who you were — once');
+}
+function enterExtend() {
+  phase = 'extend';
+  gleam();
+  say(frayed ? 'It holds — barely. You found yourself again.' : 'It held. You are still you.',
+      'now add one note — who you are becoming');
+}
+function commitVisit(added) {
+  selfState.visits.push({ t: new Date().toISOString(), frayed: frayed, added: added });
+  selfState.hue = hueBase;
+  saveSelf(selfState);
+}
+function enterCoda(firstTime) {
+  phase = 'coda';
+  const n = selfState.motif.length;
+  const frays = selfState.visits.filter(v => v.frayed).length;
+  let sub = n + ' notes across ' + Math.max(1, selfState.visits.length) + ' sittings';
+  if (frays) sub += ' — ' + frays + (frays === 1 ? ' fray' : ' frays') + ' in the thread';
+  if (firstTime) {
+    say('Remember it.', 'when you return, the phrase is how you will know you are still you');
+  } else {
+    say('The thread holds.', sub);
+  }
+  showMemo(storageOK
+    ? 'go, and come back changed'
+    : 'this place cannot remember here — the thread will not be kept');
+}
+
+/* ---------- input handling ---------- */
+function stringFromPoint(x, y) {
+  if (y < H * 0.44) return -1;
+  let best = -1, bd = 1e9;
+  for (let i = 0; i < NSTR; i++) {
+    const d = Math.abs(x - strings[i].x);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return bd < W * 0.09 ? best : -1;
+}
+
+function onTap(x, y) {
+  if (phase === 'gate') {
+    initAudio();
+    if (returning) { enterRecall(); } else { enterCompose(); }
+    return;
+  }
+  if (playing) return;
+
+  if (phase === 'listen') {
+    if (y < H * 0.44) {
+      frayed = true;
+      note2('');
+      playMotif(selfState.motif, () => {
+        phase = 'recall'; progress = 0;
+        say('Now — carry it.', 'play the phrase', 200);
+      });
+    }
+    return;
+  }
+
+  const s = stringFromPoint(x, y);
+  if (s < 0) return;
+
+  if (phase === 'compose') {
+    pluck(s);
+    composeBuf.push(s);
+    litBeads.add(composeBuf.length - 1);
+    newBeadAt = performance.now();
+    if (composeBuf.length >= 3) {
+      selfState.motif = composeBuf.slice();
+      setTimeout(() => { litBeads.clear(); enterSeal(); }, 900);
+    }
+    return;
+  }
+
+  if (phase === 'seal') {
+    if (s === selfState.motif[progress]) {
+      pluck(s); litBeads.add(progress); progress++;
+      if (progress >= selfState.motif.length) {
+        playing = true;
+        setTimeout(() => {
+          playing = false; litBeads.clear();
+          commitVisit(null);
+          enterCoda(true);
+        }, 800);
+      }
+    } else {
+      pluck(s, 0.35); flashFray = performance.now();
+      progress = 0; litBeads.clear();
+      note2('not quite — again; let it settle into your hands');
+    }
+    return;
+  }
+
+  if (phase === 'recall') {
+    if (s === selfState.motif[progress]) {
+      pluck(s); litBeads.add(progress); progress++;
+      if (progress >= selfState.motif.length) {
+        playing = true;
+        setTimeout(() => { playing = false; litBeads.clear(); enterExtend(); }, 700);
+      }
+    } else {
+      frayNoise(); flashFray = performance.now();
+      progress = 0; litBeads.clear();
+      attempts++;
+      if (attempts === 1) {
+        note2('not quite — it is still in you');
+      } else if (attempts === 2) {
+        note2('the first note, to help —');
+        playing = true;
+        setTimeout(() => { pluck(selfState.motif[0], 0.7); litBeads.add(0);
+          setTimeout(() => { playing = false; litBeads.clear(); }, 700); }, 600);
+      } else {
+        enterListen();
+      }
+    }
+    return;
+  }
+
+  if (phase === 'extend') {
+    pluck(s);
+    selfState.motif.push(s);
+    extendIndex = selfState.motif.length - 1;
+    newBeadAt = performance.now();
+    commitVisit(s);
+    playing = true;
+    setTimeout(() => {
+      playing = false;
+      say('Listen — who you will be.', '', 100);
+      setTimeout(() => playMotif(selfState.motif, () => enterCoda(false)), 900);
+    }, 900);
+    return;
+  }
+
+  if (phase === 'coda') { pluck(s, 0.55); }
+}
+
+cv.addEventListener('pointerdown', (e) => { onTap(e.clientX, e.clientY); });
+
+/* ---------- render ---------- */
+function noteHue(n) { return (selfState.hue + n * 22) % 360; }
+
+function draw(t) {
+  cx.clearRect(0, 0, W, H);
+
+  /* background wash + vignette */
+  const g = cx.createRadialGradient(W / 2, H * 0.38, 10, W / 2, H * 0.45, Math.max(W, H) * 0.85);
+  g.addColorStop(0, '#0d0f14');
+  g.addColorStop(1, '#060708');
+  cx.fillStyle = g;
+  cx.fillRect(0, 0, W, H);
+
+  /* dust */
+  for (const p of dust) {
+    p.x += p.vx * 16; p.y += p.vy * 16;
+    if (p.y < -0.02) { p.y = 1.02; p.x = Math.random(); }
+    if (p.x < -0.02) p.x = 1.02; if (p.x > 1.02) p.x = -0.02;
+    const tw = 0.25 + 0.2 * Math.sin(t * 0.0007 + p.p);
+    cx.fillStyle = 'rgba(200,195,180,' + tw * 0.14 + ')';
+    cx.beginPath();
+    cx.arc(p.x * W, p.y * H, p.r, 0, Math.PI * 2);
+    cx.fill();
+  }
+
+  /* fray flash */
+  const ff = (t - flashFray) / 600;
+  if (ff >= 0 && ff < 1) {
+    cx.fillStyle = 'rgba(140,40,30,' + 0.10 * (1 - ff) + ')';
+    cx.fillRect(0, 0, W, H);
+  }
+
+  /* the thread (motif beads) — shown while composing too */
+  const seq = (phase === 'compose') ? composeBuf : selfState.motif;
+  const total = seq.length;
+  if (total > 0 && phase !== 'gate') drawThread(seq, t);
+
+  /* strings */
+  if (phase !== 'gate') drawStrings(t);
+
+  /* progress dots during seal/recall */
+  if ((phase === 'seal' || phase === 'recall') && selfState.motif.length) {
+    drawDots(selfState.motif.length, progress, t);
+  }
+
+  requestAnimationFrame(draw);
+}
+
+function drawThread(seq, t) {
+  const total = seq.length;
+  const pts = [];
+  for (let k = 0; k < total; k++) pts.push(beadAt(k, total));
+
+  /* which visit boundaries frayed: map bead index -> frayed */
+  const fraySet = new Set();
+  if (phase !== 'compose') {
+    /* beads 0..2 are the founding phrase; each visit v (with added!=null) appended one bead */
+    let bi = 3;
+    for (const v of selfState.visits) {
+      if (v.added == null) continue;
+      if (v.frayed) fraySet.add(bi);
+      bi++;
+    }
+  }
+
+  /* connecting thread */
+  for (let k = 1; k < total; k++) {
+    const a = pts[k - 1], b = pts[k];
+    const wob = Math.sin(t * 0.0011 + k * 1.7) * 1.6;
+    const mx = (a.x + b.x) / 2 + wob, my = (a.y + b.y) / 2 + wob * 0.6;
+    if (fraySet.has(k)) {
+      /* frayed joint: broken segment + loose fibres */
+      cx.strokeStyle = 'rgba(150,120,100,0.30)';
+      cx.lineWidth = 1;
+      cx.beginPath(); cx.moveTo(a.x, a.y);
+      cx.quadraticCurveTo(mx, my, a.x * 0.45 + b.x * 0.55, a.y * 0.45 + b.y * 0.55);
+      cx.stroke();
+      for (let f = 0; f < 3; f++) {
+        const fx = a.x * 0.5 + b.x * 0.5, fy = a.y * 0.5 + b.y * 0.5;
+        cx.strokeStyle = 'rgba(150,110,90,0.22)';
+        cx.beginPath(); cx.moveTo(fx, fy);
+        cx.lineTo(fx + Math.sin(t * 0.001 + f * 2.4) * 5 + (f - 1) * 4, fy + 6 + f * 3);
+        cx.stroke();
+      }
+      cx.strokeStyle = 'rgba(190,180,160,0.34)';
+      cx.beginPath();
+      cx.moveTo(a.x * 0.32 + b.x * 0.68, a.y * 0.32 + b.y * 0.68);
+      cx.lineTo(b.x, b.y); cx.stroke();
+    } else {
+      cx.strokeStyle = 'rgba(190,180,160,0.34)';
+      cx.lineWidth = 1;
+      cx.beginPath(); cx.moveTo(a.x, a.y);
+      cx.quadraticCurveTo(mx, my, b.x, b.y);
+      cx.stroke();
+    }
+  }
+
+  /* beads */
+  for (let k = 0; k < total; k++) {
+    const p = pts[k];
+    const hue = noteHue(seq[k]);
+    const lit = litBeads.has(k);
+    let r = 5.4 + (k === total - 1 ? 1.3 : 0);
+    /* newest bead grows in */
+    if (k === total - 1 && (phase === 'compose' || phase === 'extend' || k === extendIndex)) {
+      const gr = Math.min(1, (t - newBeadAt) / 600);
+      r *= 0.3 + 0.7 * gr;
+    }
+    const breathe = 1 + 0.06 * Math.sin(t * 0.0016 + k * 0.9);
+    r *= breathe;
+    if (lit) {
+      const halo = cx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 5);
+      halo.addColorStop(0, 'hsla(' + hue + ',75%,70%,0.55)');
+      halo.addColorStop(1, 'hsla(' + hue + ',75%,70%,0)');
+      cx.fillStyle = halo;
+      cx.beginPath(); cx.arc(p.x, p.y, r * 5, 0, Math.PI * 2); cx.fill();
+    }
+    cx.fillStyle = lit
+      ? 'hsla(' + hue + ',80%,74%,0.98)'
+      : 'hsla(' + hue + ',45%,' + (phase === 'recall' || phase === 'seal' ? 38 : 52) + '%,0.9)';
+    cx.beginPath(); cx.arc(p.x, p.y, r, 0, Math.PI * 2); cx.fill();
+  }
+}
+
+function drawStrings(t) {
+  for (let i = 0; i < NSTR; i++) {
+    const s = strings[i];
+    const dt = (t - s.pluckAt) / 1000;
+    const alive = dt >= 0 && dt < 1.6;
+    const amp = alive ? Math.exp(-dt * 3.2) * 9 * Math.sin(dt * 55) : 0;
+    const hue = noteHue(i);
+    const glow = alive ? Math.exp(-dt * 2.5) : 0;
+
+    if (glow > 0.02) {
+      cx.strokeStyle = 'hsla(' + hue + ',70%,65%,' + glow * 0.35 + ')';
+      cx.lineWidth = 5;
+      cx.beginPath(); cx.moveTo(s.x, s.top);
+      cx.quadraticCurveTo(s.x + amp * 1.4, (s.top + s.bot) / 2, s.x, s.bot);
+      cx.stroke();
+    }
+    cx.strokeStyle = alive
+      ? 'hsla(' + hue + ',60%,72%,0.9)'
+      : 'rgba(175,168,150,0.42)';
+    cx.lineWidth = 1.4;
+    cx.beginPath(); cx.moveTo(s.x, s.top);
+    cx.quadraticCurveTo(s.x + amp, (s.top + s.bot) / 2, s.x, s.bot);
+    cx.stroke();
+
+    /* anchor pegs */
+    cx.fillStyle = 'rgba(160,152,132,0.5)';
+    cx.beginPath(); cx.arc(s.x, s.top, 2, 0, Math.PI * 2); cx.fill();
+    cx.beginPath(); cx.arc(s.x, s.bot, 2, 0, Math.PI * 2); cx.fill();
+  }
+}
+
+function drawDots(total, done, t) {
+  const y = H * 0.455;
+  const gap = Math.min(18, (W * 0.8) / Math.max(1, total));
+  const x0 = W / 2 - ((total - 1) * gap) / 2;
+  for (let k = 0; k < total; k++) {
+    const filled = k < done;
+    cx.fillStyle = filled ? 'rgba(225,218,195,0.95)' : 'rgba(225,218,195,0.22)';
+    cx.beginPath();
+    cx.arc(x0 + k * gap, y, filled ? 2.6 : 2, 0, Math.PI * 2);
+    cx.fill();
+  }
+}
+
+/* ---------- go ---------- */
+resize();
+enterGate();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
