@@ -114,6 +114,8 @@ const form = {
   x: 0, y: 0, r: 46,
   wx: Math.random() * TAU, wy: Math.random() * TAU, // wander phases
   pulsePhase: Math.random() * TAU, pulseRate: 0.9,  // its own private timeline
+  audioPhase: Math.random() * TAU, // what the EAR hears the form breathe at —
+                                   // only differs from pulsePhase once tempo is loose
   hue: 0,
   freq: 196,
 };
@@ -130,7 +132,8 @@ function makeFeature(pulseRate) {
 }
 const color = makeFeature(1.18);
 const voice = makeFeature(1.42);
-const features = [color, voice];
+const tempo = makeFeature(1.9);   // the stray rhythm — the rate the ear hears
+const features = [color, voice, tempo];
 
 function roundParams() {
   const r = state.round;
@@ -139,15 +142,20 @@ function roundParams() {
     wanderRate: Math.min(0.10 + r * 0.02, 0.3),
     driftSpeed: Math.min(5 + r * 5, 46),
     misleading: r >= 3,   // color lies about its hue until it gets close
+    tempoOn: r >= 4,      // the object's rhythm breaks off as a fourth piece
   };
 }
 
+function activeFeatures() {
+  return roundParams().tempoOn ? features : [color, voice];
+}
+
 function placeRound() {
-  const p = roundParams();
   form.hue = Math.floor(Math.random() * 360);
   const scale = [0, 2, 4, 7, 9]; // pentatonic
   form.freq = 165 * Math.pow(2, scale[Math.floor(Math.random() * 5)] / 12);
-  for (const f of features) {
+  const act = activeFeatures();
+  for (const f of act) {
     const a = Math.random() * TAU;
     const dist = Math.min(W, H) * (0.28 + Math.random() * 0.14);
     f.x = W / 2 + Math.cos(a) * dist;
@@ -157,8 +165,12 @@ function placeRound() {
     keepIn(f);
   }
   // make sure they don't start bound or on top of each other
-  if (Math.hypot(color.x - voice.x, color.y - voice.y) < BIND_R * 2) {
-    voice.x = W - color.x; voice.y = H - color.y; keepIn(voice);
+  for (let i = 0; i < act.length; i++) {
+    for (let j = i + 1; j < act.length; j++) {
+      if (Math.hypot(act[i].x - act[j].x, act[i].y - act[j].y) < BIND_R * 2) {
+        act[j].x = W - act[j].x; act[j].y = H - act[j].y; keepIn(act[j]);
+      }
+    }
   }
   if (audio.on) audio.setBase(form.freq);
 }
@@ -259,6 +271,20 @@ const audio = {
     this.harmGain.gain.setTargetAtTime(warm * (0.10 + 0.05 * colorPulse) + 0.0001, t, 0.05);
   },
 
+  // the stray rhythm's own voice: a soft tick at each peak of the
+  // ear's pulse, fading as tempo comes home and the rhythms agree
+  tick(g) {
+    if (!this.on || g <= 0.004) return;
+    const ac = this.ctx, t = ac.currentTime;
+    const o = ac.createOscillator(); o.type = 'sine';
+    o.frequency.value = this.base * 5;
+    const og = ac.createGain();
+    og.gain.setValueAtTime(g, t);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.055);
+    o.connect(og); og.connect(this.master);
+    o.start(t); o.stop(t + 0.08);
+  },
+
   snap() {
     if (!this.on) return;
     const ac = this.ctx, t = ac.currentTime;
@@ -290,7 +316,7 @@ const pointers = new Map(); // pointerId -> {x, y}
 
 function grabbable(x, y) {
   let best = null, bd = 72;
-  for (const f of features) {
+  for (const f of activeFeatures()) {
     if (f.grabbed !== null) continue;
     const d = Math.hypot(f.x - x, f.y - y);
     if (d < bd) { bd = d; best = f; }
@@ -346,13 +372,31 @@ function update(dt) {
   // private timelines drift until the snap locks them
   if (state.phase === 'whole' || state.phase === 'snapping') {
     state.breath += dt * 0.7 * TAU;
+    form.audioPhase = form.pulsePhase;
   } else {
     form.pulsePhase += dt * form.pulseRate * TAU;
-    for (const f of features) f.pulsePhase += dt * f.pulseRate * TAU;
+    for (const f of activeFeatures()) f.pulsePhase += dt * f.pulseRate * TAU;
+    if (p.tempoOn) {
+      // the ear's rhythm runs at the loose spark's rate; as tempo comes
+      // home the rate bends back and the phase is pulled into the eye's
+      const rate = tempo.pulseRate + (form.pulseRate - tempo.pulseRate) * tempo.closeness;
+      const prev = form.audioPhase;
+      form.audioPhase += dt * rate * TAU;
+      let dphi = (form.pulsePhase - form.audioPhase) % TAU;
+      if (dphi > Math.PI) dphi -= TAU; else if (dphi < -Math.PI) dphi += TAU;
+      form.audioPhase += dphi * Math.min(1, dt * 6) * tempo.closeness * tempo.closeness;
+      // a soft tick at each peak of the ear's pulse, quieter as it binds
+      const peak = Math.PI / 2;
+      if (Math.floor((form.audioPhase - peak) / TAU) > Math.floor((prev - peak) / TAU)) {
+        audio.tick(0.10 * (1 - tempo.closeness * 0.9));
+      }
+    } else {
+      form.audioPhase = form.pulsePhase;
+    }
   }
 
   if (state.phase === 'play') {
-    for (const f of features) {
+    for (const f of activeFeatures()) {
       if (f.grabbed !== null && pointers.has(f.grabbed)) {
         const pt = pointers.get(f.grabbed);
         f.x += (pt.x - f.x) * Math.min(1, dt * 14);
@@ -375,8 +419,8 @@ function update(dt) {
       f.closeness += (target - f.closeness) * Math.min(1, dt * 8);
     }
 
-    const both = color.dn < 1 && voice.dn < 1;
-    if (both) {
+    const all = activeFeatures().every(f => f.dn < 1);
+    if (all) {
       if (state.bothSince < 0) state.bothSince = state.t;
       if ((state.t - state.bothSince) * 1000 >= HOLD_MS) beginSnap();
     } else {
@@ -386,7 +430,7 @@ function update(dt) {
     state.phaseT += dt;
     // features tween hard into the form — the snap is spatial too
     const k = Math.min(1, dt * 22);
-    for (const f of features) {
+    for (const f of activeFeatures()) {
       f.x += (form.x - f.x) * k;
       f.y += (form.y - f.y) * k;
       f.closeness += (1 - f.closeness) * k;
@@ -395,20 +439,21 @@ function update(dt) {
     if (state.phaseT > 0.24) { state.phase = 'whole'; state.phaseT = 0; }
   } else if (state.phase === 'whole') {
     state.phaseT += dt;
-    for (const f of features) { f.x = form.x; f.y = form.y; f.dn = 0; f.closeness = 1; }
+    for (const f of activeFeatures()) { f.x = form.x; f.y = form.y; f.dn = 0; f.closeness = 1; }
     if (state.phaseT > 2.3) {
       state.phase = 'scatter'; state.phaseT = 0;
       state.round++;
       roundsEl.textContent = 'one, ×' + state.round;
       roundsEl.classList.add('show');
       placeRound();
-      for (const f of features) { f.sx = form.x; f.sy = form.y; f.tx = f.x; f.ty = f.y; }
+      // newly loose pieces (tempo, its first time) break off the whole too
+      for (const f of activeFeatures()) { f.sx = form.x; f.sy = form.y; f.tx = f.x; f.ty = f.y; f.closeness = 1; }
     }
   } else if (state.phase === 'scatter') {
     state.phaseT += dt;
     const u = Math.min(1, state.phaseT / 0.7);
     const e = 1 - Math.pow(1 - u, 3);
-    for (const f of features) {
+    for (const f of activeFeatures()) {
       f.x = f.sx + (f.tx - f.sx) * e;
       f.y = f.sy + (f.ty - f.sy) * e;
       f.d = Math.hypot(f.x - form.x, f.y - form.y); f.dn = f.d / BIND_R;
@@ -418,8 +463,9 @@ function update(dt) {
     if (u >= 1) { state.phase = 'play'; state.phaseT = 0; state.bothSince = -1; }
   }
 
-  // hand the frame to the ear on the same timelines the eye gets
-  const humP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : form.pulsePhase);
+  // hand the frame to the ear — the hum's breath comes from audioPhase,
+  // which only agrees with the eye's once tempo is home
+  const humP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : form.audioPhase);
   const voiP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : voice.pulsePhase);
   const colP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : color.pulsePhase);
   audio.frame(voice.dn, color.closeness, humP, voiP, colP,
@@ -429,7 +475,7 @@ function update(dt) {
 function beginSnap() {
   state.phase = 'snapping'; state.phaseT = 0; state.bothSince = -1;
   state.breath = Math.PI / 2; // start the shared breath at full
-  for (const f of features) f.grabbed = null;
+  for (const f of activeFeatures()) f.grabbed = null;
   audio.snap();
   if (navigator.vibrate) { try { navigator.vibrate([18, 40, 26]); } catch (_) {} }
 }
@@ -454,6 +500,9 @@ function draw() {
   ctx.fillStyle = '#0a0a12';
   ctx.fillRect(0, 0, W, H);
   if (!state.started) return;
+
+  // the blink of fusion — one dropped frame right at the instant of lock
+  if (state.phase === 'snapping' && state.phaseT < 0.045) return;
 
   const p = roundParams();
   const whole = state.phase === 'whole' || state.phase === 'snapping';
@@ -543,10 +592,29 @@ function draw() {
     ctx.fillStyle = `hsla(0, 0%, 88%, ${va * 0.9})`;
     ctx.fill();
   }
+
+  // ---- tempo, loose: a gold spark flashing at the rhythm the EAR hears ----
+  // the hum swells and this spark flares in the same instant — the stray
+  // timeline made visible, somewhere the form is not
+  if (p.tempoOn && !whole) {
+    const flash = Math.pow(0.5 + 0.5 * Math.sin(form.audioPhase), 5);
+    const ta = 1 - tempo.closeness * 0.8;
+    const fl = 8 + 17 * flash;
+    ctx.strokeStyle = `hsla(46, 85%, 76%, ${ta * 0.55 * flash})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(tempo.x - fl, tempo.y); ctx.lineTo(tempo.x + fl, tempo.y);
+    ctx.moveTo(tempo.x, tempo.y - fl); ctx.lineTo(tempo.x, tempo.y + fl);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(tempo.x, tempo.y, 3.5 + 4.5 * flash, 0, TAU);
+    ctx.fillStyle = `hsla(46, 92%, ${58 + 32 * flash}%, ${ta * (0.35 + 0.6 * flash)})`;
+    ctx.fill();
+  }
 }
 
 // expose a small handle for headless verification
-window.__ot = { state, form, color, voice, audio };
+window.__ot = { state, form, color, voice, tempo, audio, placeRound, activeFeatures };
 
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
