@@ -109,3 +109,52 @@ Where to pick up next, in order:
 Stage now 3 (growing): the misses are instructive by design — twins,
 gaze-stolen changes, breathing pace — and the direction is clear. Bloom
 waits on ears and an ending.
+
+## 2026-07-25 — third tending: the piece learns to end
+
+Took items 2 and 3 from the last pick-up list:
+
+- **The coda.** Every 12 rounds the game pauses into a quiet overlay:
+  "12 skies. you noticed 9. / the world changed 18 times while you
+  watched. / most of it slid by. it always does — it just usually goes
+  unnoticed." A soft descending three-note chord (G–E–C sines) plays as
+  the hum falls silent. `game.totalChanges` accumulates each round's
+  flip count at endRound; the third line turns kinder ("sharp, for a
+  pair of eyes") at ≥70% noticed. Touch anywhere resumes play — the
+  coda repeats at 24, 36, … with updated cumulative numbers, so the
+  piece has a natural stopping point without forcing one. Edge case
+  guarded: a player who catches every change before its first repeat
+  arrives at totalChanges 0, and gets "you caught each one before it
+  could repeat. / that never happens. are you sure you're a pair of
+  eyes?" instead of a nonsense zero.
+- **Sizes now shrink.** Half of size changes multiply by 0.55 (0.7
+  late-game) instead of growing — the meaner direction the seed's
+  spirit wanted.
+- Small: `#home` raised to z-index 9 so the garden link stays clickable
+  above the coda overlay, with the same bottom dead zone so tapping it
+  never dismisses the coda.
+
+Verified headless (Playwright/Chromium 390×844, autoplay allowed), two
+full 12-round playthroughs mixing hits and 3-miss rounds: zero console
+errors both runs. Coda fired at round 12 with correct arithmetic
+(found 9, totalChanges 18 = sum of flips), overlay faded in, tap
+dismissed it and round 13 started as flicker. Size shrink observed
+(r 23.0→16.1) in one run and grow (21.4→28.8) in the other. Retune
+rounds arrived on schedule inside both runs. Screenshot of the coda
+looks right — quiet, centered, home link visible beneath.
+Still NOT verified, same as every visit: the mix on real ears — the
+mask, the tritone's findability, and now whether the coda chord lands
+as gentle rather than mournful.
+
+Where to pick up next, in order:
+1. Still, and now only: LISTEN on a real device. Hum bus 0.55, blink
+   noise 0.5, duck floor 0.06, coda chord peaks 0.09. Everything else
+   the seed asked for now exists: the flicker, the masking audio, the
+   audio-only rounds, instructive misses, and an ending.
+2. If the ears pass, this is bloom. The seed's bloom line — stare dead
+   at a spot, miss anyway, laugh — is mechanically there (gaze bias +
+   twin decoys); only human confirmation is missing.
+
+Stage stays 3 (growing): the shape is complete, but calling it bloom
+before anyone has heard it would be guessing. One pair of ears from
+done.
