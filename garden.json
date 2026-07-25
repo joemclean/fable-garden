@@ -17,7 +17,7 @@
     "a3": { "stage": 2, "title": "Where I End", "planted": "2026-07-24", "last_tended": "2026-07-24T21:04:15Z", "note": "playable body: linger to absorb, each part joins the heartbeat; let one go and the heart skips", "door": "plots/a3/growth/index.html", "plant": "fungus" },
     "b3": { "stage": 2, "title": "Two Minds", "planted": "2026-07-24", "last_tended": "2026-07-24T22:08:59Z", "note": "playable split-brain: flashes one half sees, both thumbs answer; the speaking half confabulates", "door": "plots/b3/growth/index.html", "plant": "plots/b3/plant.json" },
     "c3": { "stage": 2, "title": "The Inward Ear", "planted": "2026-07-24", "last_tended": "2026-07-24T23:03:53Z", "note": "playable duet with a heartbeat: ride the breath with one thumb; the body slows and deepens when you listen", "door": "plots/c3/growth/index.html", "plant": "vine" },
-    "d3": { "stage": 1, "title": "Who You Were", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
+    "d3": { "stage": 2, "title": "Who You Were", "planted": "2026-07-24", "last_tended": "2026-07-25T00:06:30Z", "note": "playable thread: recall the phrase you left to prove you're still you; each sitting adds a note, misremembering frays", "door": "plots/d3/growth/index.html", "plant": "vine" },
     "a4": { "stage": 1, "title": "The Width of Now", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "b4": { "stage": 1, "title": "Did I Do That?", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
     "c4": { "stage": 1, "title": "The River", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" },
