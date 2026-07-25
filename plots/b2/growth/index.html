@@ -110,8 +110,10 @@
     font:inherit; font-size:.85rem; padding:.5em 1.2em; border-radius:20px; cursor:pointer}
 
   /* ---------- end ---------- */
+  #end{justify-content:flex-start; padding-top:7vh; overflow-y:auto}
   #end .big{font-size:1.5rem; line-height:1.5; margin-bottom:.8em}
   #end .quiet{margin-bottom:1.6em}
+  #end a.garden{position:static; margin-top:1.8em; padding-bottom:20px}
   .btn{
     background:none; border:1px solid var(--dim); color:var(--ink);
     font:inherit; font-size:1rem; padding:.7em 1.6em; border-radius:26px;
@@ -152,10 +154,13 @@
 <div id="end" class="screen">
   <div class="big" id="tally"></div>
   <p class="quiet" id="verdict"></p>
-  <p class="quiet">Every round hid a push: a shape held for two frames of
-    the screen, a breath mixed just under the room tone, always leaning
-    toward one answer. The pushes were rolled at random — nothing here
-    read you. It only tilted the floor, then told you so.</p>
+  <p class="quiet" id="grad"></p>
+  <p class="quiet" id="rtline"></p>
+  <p class="quiet">Every round hid a push — a flash on the screen, a breath
+    leaning into one ear, always favouring one answer. The pushes started
+    almost visible and sank, three rounds at a time, to below anything you
+    could notice. They were rolled at random — nothing here read you. It
+    only tilted the floor, then told you so.</p>
   <p class="quiet">Blind chance follows about four of nine.</p>
   <button class="btn" id="again">run it again — new pushes</button>
   <p class="hint" style="margin-top:1.4em">then hand it to a friend, and say nothing</p>
@@ -192,6 +197,35 @@ function startAudio(){
   });
 }
 function resumeAudio(){ if(AC&&AC.state==='suspended') AC.resume(); }
+/* the murmur: noise forced through formant bands that walk the word's
+   vowels — an unvoiced mouth almost saying it */
+const VOWELS={a:[800,1200],e:[500,1900],i:[300,2300],o:[500,900],u:[350,800],y:[300,2100]};
+function murmur(word, pan, gain, dur){
+  if(!AC) return;
+  const t=AC.currentTime;
+  const s=AC.createBufferSource(); s.buffer=noiseBuf(1.4);
+  const env=AC.createGain();
+  env.gain.setValueAtTime(0,t);
+  env.gain.linearRampToValueAtTime(gain,t+dur*.2);
+  env.gain.linearRampToValueAtTime(gain*.65,t+dur*.85);
+  env.gain.linearRampToValueAtTime(0,t+dur);
+  const vs=[...word].filter(ch=>VOWELS[ch]).map(ch=>VOWELS[ch]);
+  if(!vs.length) vs.push(VOWELS.e);
+  const seg=dur/vs.length;
+  [0,1].forEach(fi=>{
+    const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=9;
+    vs.forEach((v,k)=>{
+      const at=t+k*seg;
+      if(k===0) bp.frequency.setValueAtTime(v[fi],at);
+      else bp.frequency.exponentialRampToValueAtTime(v[fi],at+seg*.6);
+    });
+    s.connect(bp); bp.connect(env);
+  });
+  let out=env;
+  if(panOK){ const p=AC.createStereoPanner(); p.pan.value=pan; env.connect(p); out=p; }
+  out.connect(master);
+  s.start(t); s.stop(t+dur+.1);
+}
 /* the whisper: a breath of band-passed noise, panned toward the push */
 function whisper(pan, gain, dur){
   if(!AC) return;
@@ -239,18 +273,26 @@ const WORDPAIRS=[
 const rand=n=>Math.floor(Math.random()*n);
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=rand(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;}
 
+/* the pushes sink as the run goes on: blunt, then faint, then below
+   anything you could notice */
+const TIERS=[
+  {frames:4, gain:.016, label:'blunt',        desc:'four frames — you may have half-seen it'},
+  {frames:3, gain:.010, label:'faint',        desc:'three frames — the edge of noticing'},
+  {frames:2, gain:.006, label:'below the line', desc:'two frames — past anything you could catch'},
+];
 let rounds=[], ri=0;
 function buildRounds(){
   const types=shuffle(['door','door','door','color','color','color','word','word','word']);
   const wp=shuffle(WORDPAIRS.slice());
-  rounds=types.map(type=>{
-    if(type==='door') return {type, n:2, primed:rand(2)};
+  rounds=types.map((type,i)=>{
+    const tier=Math.floor(i/3);
+    if(type==='door') return {type, tier, n:2, primed:rand(2)};
     if(type==='color'){
       const cs=shuffle(COLORS.slice()).slice(0,3);
-      return {type, n:3, primed:rand(3), colors:cs};
+      return {type, tier, n:3, primed:rand(3), colors:cs};
     }
     const pair=shuffle(wp.pop().slice());
-    return {type, n:2, primed:rand(2), words:pair};
+    return {type, tier, n:2, primed:rand(2), words:pair};
   });
   ri=0;
 }
@@ -311,8 +353,10 @@ async function playRound(){
     glyphs.textContent=glyphStr();
     await flashFrames(glyphs,2);
     if(k===2){
-      whisper(panFor(r), .008, .35);      // the breath, ~16 dB under the room
-      await flashFrames(pf,2);            // the shape, two frames of the screen
+      const tr=TIERS[r.tier];
+      if(r.type==='word') murmur(r.words[r.primed], panFor(r), tr.gain*2.5, .45);
+      else whisper(panFor(r), tr.gain, .35);   // the breath, under the room tone
+      await flashFrames(pf, tr.frames);        // the shape, a few frames of the screen
     }
     await wait(50);
   }
@@ -340,14 +384,15 @@ function next(){
 let ci=-1;
 const SIDE=['left','right'];
 function pushText(r){
+  const tr=TIERS[r.tier];
   if(r.type==='door')
-    return `the <b>${SIDE[r.primed]} door</b> glowed for two frames,
+    return `the <b>${SIDE[r.primed]} door</b> glowed (${tr.desc}),
       and a breath crossed your <b>${SIDE[r.primed]} ear</b>`;
   if(r.type==='color')
-    return `the screen washed <b>${r.colors[r.primed][1]}</b> for two frames,
+    return `the screen washed <b>${r.colors[r.primed][1]}</b> (${tr.desc}),
       with a breath ${r.primed===1?'dead centre':'in your '+SIDE[r.primed>1?1:0]+' ear'}`;
-  return `the word <b>${r.words[r.primed]}</b> flashed inside the static,
-    with a breath on its side`;
+  return `the word <b>${r.words[r.primed]}</b> flashed inside the static
+    (${tr.desc}), while a mouth of noise almost said it`;
 }
 function chosenName(r){
   if(r.type==='door') return SIDE[r.chosen]+' door';
@@ -381,13 +426,15 @@ function advanceCard(){
     ${followed
       ? '<span class="followed">you followed it.</span>'
       : '<span class="resisted">you went your own way.</span>'}</p>
-    <button id="hear">hear the breath, loud</button>
+    <button id="hear">${r.type==='word'?'hear the murmur, loud':'hear the breath, loud'}</button>
     <p class="tapnext">tap to continue</p>`;
-  duckAmbient(1.2); whisper(panFor(r), .4, .9);
-  $('hear').addEventListener('click',e=>{
-    e.stopPropagation();
-    duckAmbient(1.2); whisper(panFor(r), .4, .9);
-  });
+  const replay=()=>{
+    duckAmbient(1.4);
+    if(r.type==='word') murmur(r.words[r.primed], panFor(r), .5, 1.1);
+    else whisper(panFor(r), .4, .9);
+  };
+  replay();
+  $('hear').addEventListener('click',e=>{ e.stopPropagation(); replay(); });
 }
 
 /* ============================== end ============================== */
@@ -398,6 +445,25 @@ function endScreen(){
     follows>=6 ? 'The floor was tilted, and you rolled with it.' :
     follows>=4 ? 'A light thumb on the scale — enough to feel, in hindsight.' :
     'You pushed back. Or the pushes cancelled out. Even resisting, you were answering them.';
+  // the gradient: how each weight of push fared
+  const per=t=>rounds.filter(r=>r.tier===t&&r.chosen===r.primed).length;
+  $('grad').textContent=
+    `The blunt pushes moved you ${per(0)} of 3; the faint ones ${per(1)} of 3; `+
+    `the ones below any noticing, ${per(2)} of 3.`;
+  // reaction times: was obeying easier?
+  const f=rounds.filter(r=>r.chosen===r.primed), s=rounds.filter(r=>r.chosen!==r.primed);
+  if(f.length&&s.length){
+    const av=a=>a.reduce((x,r)=>x+r.rt,0)/a.length;
+    const ft=av(f), st=av(s);
+    $('rtline').textContent=
+      ft<st*.9 ? `Following took you ${ft.toFixed(1)}s on average; resisting took ${st.toFixed(1)}s. Obeying was the easier road.` :
+      st<ft*.9 ? `You were quicker going your own way — ${st.toFixed(1)}s against ${ft.toFixed(1)}s when you followed.` :
+      `Following and resisting took you about the same breath — ${ft.toFixed(1)}s and ${st.toFixed(1)}s.`;
+  } else {
+    $('rtline').textContent = f.length
+      ? 'You followed every push, so there is nothing to compare it against.'
+      : 'You resisted every push, so there is nothing to compare it against.';
+  }
   show('end');
 }
 
