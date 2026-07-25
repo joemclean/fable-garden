@@ -57,6 +57,7 @@
 <div id="words"><div id="line1"></div><div id="line2"></div></div>
 <div id="memo"></div>
 <a id="garden" href="../../../viewer/">the garden</a>
+<script src="gardener.js"></script>
 <script>
 'use strict';
 
@@ -75,6 +76,10 @@ function saveSelf(s) {
 }
 let self0 = loadSelf();
 if (self0 && (!Array.isArray(self0.motif) || self0.motif.length < 1)) self0 = null;
+
+/* the gardener's thread — read-only, left by whoever tends this plot */
+const gardener = (window.GARDENER_THREAD || []).filter(e =>
+  e && typeof e.note === 'number' && e.note >= 0 && e.note < 5);
 
 /* ---------- notes / strings ---------- */
 const FREQS = [261.63, 293.66, 329.63, 392.00, 440.00]; /* C D E G A */
@@ -181,6 +186,12 @@ function beadAt(k, total) {
   const r = (12 + t * Math.min(W, H) * (0.075 + total * 0.0115));
   return { x: cxp + Math.cos(ang) * r * 1.15, y: cyp + Math.sin(ang) * r * 0.9 };
 }
+/* the gardener's beads: a faint constellation arcing over the spiral */
+function gardenerAt(k, total) {
+  const cxp = W * 0.5, cyp = H * 0.27;
+  const ang = -Math.PI + Math.PI * ((k + 1) / (total + 1));
+  return { x: cxp + Math.cos(ang) * W * 0.42, y: cyp + Math.sin(ang) * H * 0.155 };
+}
 
 /* dust */
 const dust = [];
@@ -206,6 +217,9 @@ let litBeads = new Set(); /* beads currently lit (matched or playing) */
 let flashFray = 0;        /* timestamp of last fray flash */
 let newBeadAt = -1e9;     /* animate the newest bead in */
 let extendIndex = -1;
+let litGardener = new Set();
+let gardenerHummed = false; /* the gardener's thread plays itself once per coda */
+let checkpoint = 0;       /* long-motif mercy: midpoint that holds once reached */
 
 const line1 = document.getElementById('line1');
 const line2 = document.getElementById('line2');
@@ -227,6 +241,17 @@ function daysAgo(iso) {
   const d = Math.floor(ms / 86400000);
   if (d <= 0) { const h = Math.floor(ms / 3600000); return h <= 1 ? 'not long ago' : h + ' hours ago'; }
   return d === 1 ? 'a day ago' : d + ' days ago';
+}
+/* when was bead k left? 0..2 are the founding phrase; each later bead is a visit */
+function beadStory(k) {
+  if (k < 3) return { t: selfState.began, founding: true };
+  let bi = 3;
+  for (const v of selfState.visits) {
+    if (v.added == null) continue;
+    if (bi === k) return { t: v.t, frayed: !!v.frayed };
+    bi++;
+  }
+  return null;
 }
 
 /* ---------- motif playback ---------- */
@@ -263,10 +288,12 @@ function enterSeal() {
 }
 function enterRecall() {
   phase = 'recall'; progress = 0; attempts = 0; frayed = false;
+  checkpoint = selfState.motif.length >= 8 ? Math.ceil(selfState.motif.length / 2) : 0;
   const when = selfState.visits.length
     ? selfState.visits[selfState.visits.length - 1].t : selfState.began;
   say('Play the phrase you left ' + daysAgo(when) + '.',
-      selfState.motif.length + ' notes — prove you are still you');
+      selfState.motif.length + ' notes — ' +
+      (checkpoint ? 'a long self now; take it in two breaths' : 'prove you are still you'));
 }
 function enterListen() {
   phase = 'listen';
@@ -289,6 +316,7 @@ function enterCoda(firstTime) {
   const frays = selfState.visits.filter(v => v.frayed).length;
   let sub = n + ' notes across ' + Math.max(1, selfState.visits.length) + ' sittings';
   if (frays) sub += ' — ' + frays + (frays === 1 ? ' fray' : ' frays') + ' in the thread';
+  if (frays === 0 && n > 3) sub += ' — touch a bead to ask when it was left';
   if (firstTime) {
     say('Remember it.', 'when you return, the phrase is how you will know you are still you');
   } else {
@@ -297,6 +325,30 @@ function enterCoda(firstTime) {
   showMemo(storageOK
     ? 'go, and come back changed'
     : 'this place cannot remember here — the thread will not be kept');
+  /* after a while, the gardener's own thread hums itself, once */
+  if (!firstTime && gardener.length && !gardenerHummed) {
+    gardenerHummed = true;
+    setTimeout(() => {
+      if (phase !== 'coda') return;
+      let k = 0;
+      function hum() {
+        if (phase !== 'coda') { litGardener.clear(); return; }
+        if (k < gardener.length) {
+          pluck(gardener[k].note, 0.22);
+          litGardener.add(k); k++;
+          setTimeout(hum, 620);
+        } else {
+          setTimeout(() => {
+            litGardener.clear();
+            if (phase === 'coda')
+              note2('a fainter thread arcs above — the gardener’s, ' +
+                    gardener.length + (gardener.length === 1 ? ' sitting' : ' sittings') + ' long');
+          }, 800);
+        }
+      }
+      hum();
+    }, 3500);
+  }
 }
 
 /* ---------- input handling ---------- */
@@ -329,6 +381,8 @@ function onTap(x, y) {
     }
     return;
   }
+
+  if (phase === 'coda' && y < H * 0.44) { touchBead(x, y); return; }
 
   const s = stringFromPoint(x, y);
   if (s < 0) return;
@@ -367,21 +421,28 @@ function onTap(x, y) {
   if (phase === 'recall') {
     if (s === selfState.motif[progress]) {
       pluck(s); litBeads.add(progress); progress++;
+      if (checkpoint && progress === checkpoint) {
+        note2('the first breath holds — it will not unravel behind you');
+      }
       if (progress >= selfState.motif.length) {
         playing = true;
         setTimeout(() => { playing = false; litBeads.clear(); enterExtend(); }, 700);
       }
     } else {
       frayNoise(); flashFray = performance.now();
-      progress = 0; litBeads.clear();
+      /* a held first breath is not lost: fall back to the midpoint, not the start */
+      const resetTo = (checkpoint && progress >= checkpoint) ? checkpoint : 0;
+      progress = resetTo;
+      litBeads.clear();
+      for (let k = 0; k < resetTo; k++) litBeads.add(k);
       attempts++;
       if (attempts === 1) {
         note2('not quite — it is still in you');
       } else if (attempts === 2) {
-        note2('the first note, to help —');
+        note2(resetTo ? 'the note where you stood, to help —' : 'the first note, to help —');
         playing = true;
-        setTimeout(() => { pluck(selfState.motif[0], 0.7); litBeads.add(0);
-          setTimeout(() => { playing = false; litBeads.clear(); }, 700); }, 600);
+        setTimeout(() => { pluck(selfState.motif[resetTo], 0.7); litBeads.add(resetTo);
+          setTimeout(() => { playing = false; litBeads.delete(resetTo); }, 700); }, 600);
       } else {
         enterListen();
       }
@@ -404,7 +465,54 @@ function onTap(x, y) {
     return;
   }
 
-  if (phase === 'coda') { pluck(s, 0.55); }
+  if (phase === 'coda') {
+    pluck(s, 0.55);
+    /* noodling echoes on the spiral: beads that share the note glow */
+    const seq = selfState.motif;
+    for (let k = 0; k < seq.length; k++) {
+      if (seq[k] === s) {
+        litBeads.add(k);
+        setTimeout(((kk) => () => { if (!playing) litBeads.delete(kk); })(k), 650);
+      }
+    }
+  }
+}
+
+/* in the coda, the spiral answers questions: each bead knows when it was left */
+function touchBead(x, y) {
+  const total = selfState.motif.length;
+  let best = -1, bd = 1e9;
+  for (let k = 0; k < total; k++) {
+    const p = beadAt(k, total);
+    const d = Math.hypot(x - p.x, y - p.y);
+    if (d < bd) { bd = d; best = k; }
+  }
+  if (best >= 0 && bd < 24) {
+    pluck(selfState.motif[best], 0.6);
+    litBeads.add(best);
+    setTimeout(((kk) => () => { if (!playing) litBeads.delete(kk); })(best), 900);
+    const st = beadStory(best);
+    if (st) {
+      note2(st.founding
+        ? 'the founding phrase — left ' + daysAgo(st.t)
+        : 'added ' + daysAgo(st.t) + (st.frayed ? ' — the sitting the thread frayed' : ''));
+    }
+    return;
+  }
+  /* or the gardener's fainter beads, arcing above */
+  best = -1; bd = 1e9;
+  for (let k = 0; k < gardener.length; k++) {
+    const p = gardenerAt(k, gardener.length);
+    const d = Math.hypot(x - p.x, y - p.y);
+    if (d < bd) { bd = d; best = k; }
+  }
+  if (best >= 0 && bd < 26) {
+    const e = gardener[best];
+    pluck(e.note, 0.3);
+    litGardener.add(best);
+    setTimeout(((kk) => () => litGardener.delete(kk))(best), 900);
+    note2('the gardener, ' + daysAgo(e.t) + (e.word ? ' — “' + e.word + '”' : ''));
+  }
 }
 
 cv.addEventListener('pointerdown', (e) => { onTap(e.clientX, e.clientY); });
@@ -445,6 +553,9 @@ function draw(t) {
   const seq = (phase === 'compose') ? composeBuf : selfState.motif;
   const total = seq.length;
   if (total > 0 && phase !== 'gate') drawThread(seq, t);
+
+  /* the gardener's constellation, always faintly there once the place is awake */
+  if (phase !== 'gate' && gardener.length) drawGardener(t);
 
   /* strings */
   if (phase !== 'gate') drawStrings(t);
@@ -506,12 +617,13 @@ function drawThread(seq, t) {
     }
   }
 
-  /* beads */
+  /* beads — older ones wear a patina, so the spiral reads as time */
   for (let k = 0; k < total; k++) {
     const p = pts[k];
     const hue = noteHue(seq[k]);
     const lit = litBeads.has(k);
-    let r = 5.4 + (k === total - 1 ? 1.3 : 0);
+    const age = total - 1 - k;
+    let r = 5.4 - Math.min(1.1, age * 0.12) + (k === total - 1 ? 1.3 : 0);
     /* newest bead grows in */
     if (k === total - 1 && (phase === 'compose' || phase === 'extend' || k === extendIndex)) {
       const gr = Math.min(1, (t - newBeadAt) / 600);
@@ -526,9 +638,43 @@ function drawThread(seq, t) {
       cx.fillStyle = halo;
       cx.beginPath(); cx.arc(p.x, p.y, r * 5, 0, Math.PI * 2); cx.fill();
     }
+    const baseL = (phase === 'recall' || phase === 'seal' ? 38 : 52) - Math.min(9, age * 1.0);
+    const baseS = 45 - Math.min(14, age * 1.5);
     cx.fillStyle = lit
       ? 'hsla(' + hue + ',80%,74%,0.98)'
-      : 'hsla(' + hue + ',45%,' + (phase === 'recall' || phase === 'seal' ? 38 : 52) + '%,0.9)';
+      : 'hsla(' + hue + ',' + baseS + '%,' + baseL + '%,0.9)';
+    cx.beginPath(); cx.arc(p.x, p.y, r, 0, Math.PI * 2); cx.fill();
+  }
+}
+
+/* the gardener's constellation: dim, high, watching */
+function drawGardener(t) {
+  const total = gardener.length;
+  const pts = [];
+  for (let k = 0; k < total; k++) pts.push(gardenerAt(k, total));
+  if (total > 1) {
+    cx.strokeStyle = 'rgba(170,170,150,0.08)';
+    cx.lineWidth = 1;
+    cx.beginPath(); cx.moveTo(pts[0].x, pts[0].y);
+    for (let k = 1; k < total; k++) cx.lineTo(pts[k].x, pts[k].y);
+    cx.stroke();
+  }
+  for (let k = 0; k < total; k++) {
+    const p = pts[k];
+    const hue = noteHue(gardener[k].note);
+    const lit = litGardener.has(k);
+    const tw = 0.5 + 0.5 * Math.sin(t * 0.0009 + k * 2.1);
+    const r = 2.4 + tw * 0.5 + (lit ? 1.2 : 0);
+    if (lit) {
+      const halo = cx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 5);
+      halo.addColorStop(0, 'hsla(' + hue + ',60%,68%,0.45)');
+      halo.addColorStop(1, 'hsla(' + hue + ',60%,68%,0)');
+      cx.fillStyle = halo;
+      cx.beginPath(); cx.arc(p.x, p.y, r * 5, 0, Math.PI * 2); cx.fill();
+    }
+    cx.fillStyle = lit
+      ? 'hsla(' + hue + ',65%,72%,0.95)'
+      : 'hsla(' + hue + ',28%,58%,' + (0.22 + tw * 0.14) + ')';
     cx.beginPath(); cx.arc(p.x, p.y, r, 0, Math.PI * 2); cx.fill();
   }
 }
