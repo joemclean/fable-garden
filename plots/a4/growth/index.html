@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>The Width of Now</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0b0e14; color: #e8ecf4;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    overflow: hidden; overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
+  }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  a.garden {
+    position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 14px;
+    color: rgba(232,236,244,.38); text-decoration: none; font-size: 12px;
+    letter-spacing: .08em; z-index: 3; padding: 6px;
+  }
+  a.garden:active { color: rgba(232,236,244,.8); }
+  #reset {
+    position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 14px;
+    color: rgba(232,236,244,.38); font-size: 12px; letter-spacing: .08em;
+    z-index: 3; padding: 6px; cursor: pointer;
+  }
+  #reset:active { color: rgba(232,236,244,.8); }
+  #overlay {
+    position: fixed; inset: 0; z-index: 5;
+    background: #0b0e14;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; box-sizing: border-box;
+    transition: opacity .8s ease; cursor: pointer;
+  }
+  #overlay.gone { opacity: 0; pointer-events: none; }
+  #overlay h1 {
+    font-size: 20px; font-weight: 400; letter-spacing: .35em; margin: 0 0 14px;
+    color: rgba(232,236,244,.92); text-transform: uppercase;
+  }
+  #overlay p { font-size: 13px; line-height: 1.7; color: rgba(232,236,244,.5); max-width: 30em; margin: 0 0 40px; }
+  #overlay .go {
+    font-size: 13px; letter-spacing: .2em; color: #7fd4ff;
+    border: 1px solid rgba(127,212,255,.35); border-radius: 999px;
+    padding: 12px 30px; animation: breathe 2.6s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100% { opacity:.55 } 50% { opacity:1 } }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<a class="garden" href="../../../viewer/">&#10229; garden</a>
+<div id="reset">reset</div>
+<div id="overlay">
+  <h1>The Width of Now</h1>
+  <p>The present is not a point &mdash; it has width.
+     Inside the window, sounds happen <em>together</em>; outside it, one after another.
+     Stretch the moment and listen to beats fuse. Shrink it and hear one now shatter into a line.</p>
+  <div class="go">tap to begin</div>
+</div>
+<script>
+'use strict';
+/* ============================== the loop ============================== */
+const L = 4.0;                 // loop length, seconds
+const W_MIN = 0.03, W_MAX = L; // width of the now-window, seconds
+let sliderX = 0.34;            // 0..1, exponential map to W
+const widthOfNow = () => W_MIN * Math.pow(W_MAX / W_MIN, sliderX);
+
+// the seed motif: clusters at different spacings so fusion arrives in stages
+const PRESET = [
+  { phase: 0.00, deg: 4 }, { phase: 0.13, deg: 6 },   // tight pair
+  { phase: 0.95, deg: 2 },
+  { phase: 1.55, deg: 7 }, { phase: 1.80, deg: 9 },   // looser pair
+  { phase: 2.60, deg: 0 },
+  { phase: 3.05, deg: 3 }, { phase: 3.22, deg: 5 }, { phase: 3.42, deg: 7 } // triple
+];
+const MAX_NOTES = 24;
+let notes = [];               // {phase, deg, user, bornAt, fireAt}
+function seedNotes() {
+  notes = PRESET.map(p => ({ phase: p.phase, deg: p.deg, user: false, bornAt: -9, fireAt: -9 }));
+}
+seedNotes();
+
+/* ------------- binding: events closer than W fuse into one moment ------------- */
+let groups = [];
+function computeGroups() {
+  const W = widthOfNow();
+  groups = [];
+  if (!notes.length) return;
+  const sorted = [...notes].sort((a, b) => a.phase - b.phase);
+  let cur = [sorted[0]];
+  const raw = [cur];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].phase - cur[cur.length - 1].phase <= W) cur.push(sorted[i]);
+    else { cur = [sorted[i]]; raw.push(cur); }
+  }
+  if (raw.length > 1) { // the loop wraps: does the tail touch the head?
+    const head = raw[0], tail = raw[raw.length - 1];
+    if (head[0].phase + L - tail[tail.length - 1].phase <= W) {
+      raw[0] = tail.concat(head);
+      raw.pop();
+    }
+  }
+  groups = raw.map(g => {
+    const base = g[0].phase;
+    let sum = 0, lo = Infinity, hi = -Infinity;
+    for (const n of g) {
+      let p = n.phase; if (p < base) p += L; // unwrap
+      sum += p; lo = Math.min(lo, p); hi = Math.max(hi, p);
+    }
+    return { notes: g, fire: (sum / g.length) % L, lo: lo % L, span: hi - lo };
+  });
+}
+computeGroups();
+
+/* ============================== sound ============================== */
+let ctx = null, master = null, anchor = 0, horizon = 0;
+const PENTA = [0, 2, 4, 7, 9]; // A pentatonic degrees over two octaves
+const degFreq = d => 440 * Math.pow(2, (57 + PENTA[d % 5] + 12 * Math.floor(d / 5) - 69) / 12);
+
+function initAudio() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  master = ctx.createGain(); master.gain.value = 0.9;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 8;
+  master.connect(comp); comp.connect(ctx.destination);
+  // a little room, vendored in code: feedback delay
+  const delay = ctx.createDelay(1.0); delay.delayTime.value = 0.31;
+  const fb = ctx.createGain(); fb.gain.value = 0.32;
+  const damp = ctx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 1700;
+  const wet = ctx.createGain(); wet.gain.value = 0.18;
+  delay.connect(damp); damp.connect(fb); fb.connect(delay);
+  delay.connect(wet); wet.connect(comp);
+  master.delaySend = ctx.createGain(); master.delaySend.gain.value = 1;
+  master.delaySend.connect(delay);
+  anchor = ctx.currentTime + 0.10;
+  horizon = anchor - 0.001;
+  setInterval(schedulerTick, 90);
+}
+
+const pendingFires = []; // {t, phase, span, n, hues}
+function playNote(note, t, nInGroup) {
+  const W = widthOfNow();
+  const attack  = 0.004 + Math.min(W, 1) * 0.035;
+  const release = 0.18 + Math.min(W, 2) * 0.6;
+  const peak = 0.22 / Math.sqrt(nInGroup);
+  const f = degFreq(note.deg);
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = f * Math.pow(2, (Math.random() * 6 - 3) / 1200);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(peak, t + attack);
+  g.gain.setTargetAtTime(0.0001, t + attack, release / 4);
+  osc.connect(g); g.connect(master); g.connect(master.delaySend);
+  osc.start(t); osc.stop(t + attack + release * 1.6);
+  note.fireAt = t;
+}
+function scheduleGroup(g, t) {
+  for (const n of g.notes) playNote(n, t, g.notes.length);
+  pendingFires.push({ t, phase: g.fire, lo: g.lo, span: g.span, n: g.notes.length,
+                      degs: g.notes.map(n => n.deg) });
+}
+function schedulerTick() {
+  const t = ctx.currentTime, until = t + 0.30;
+  if (horizon < t) horizon = t;
+  for (const g of groups) {
+    let k = Math.floor((horizon - anchor - g.fire) / L) + 1;
+    let ft = anchor + g.fire + k * L;
+    while (ft <= until) { scheduleGroup(g, ft); ft += L; }
+  }
+  horizon = until;
+}
+
+/* ============================== picture ============================== */
+const cv = document.getElementById('stage');
+const g2 = cv.getContext('2d');
+let vw = 0, vh = 0, dpr = 1, bandH = 104;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  vw = window.innerWidth; vh = window.innerHeight;
+  cv.width = vw * dpr; cv.height = vh * dpr;
+  cv.style.width = vw + 'px'; cv.style.height = vh + 'px';
+  g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  bandH = Math.max(92, Math.min(128, vh * 0.15));
+}
+window.addEventListener('resize', resize); resize();
+
+const hueOf = d => 185 + d * 15;                    // pitch → colour
+const angOf = p => (p / L) * Math.PI * 2 - Math.PI / 2;
+const activeFires = [];                             // fires whose time has come
+let tappedOnce = false, draggedOnce = false;
+
+function draw() {
+  requestAnimationFrame(draw);
+  const now = ctx ? ctx.currentTime : 0;
+  const phase = ctx ? ((now - anchor) % L + L) % L : 0;
+  const W = widthOfNow();
+  const playH = vh - bandH;
+  const cx = vw / 2, cy = playH * 0.54;
+  const R = Math.min(vw, playH) * 0.345;
+
+  g2.clearRect(0, 0, vw, vh);
+
+  // title
+  g2.textAlign = 'center'; g2.textBaseline = 'middle';
+  g2.font = '11px ui-monospace, Menlo, monospace';
+  g2.fillStyle = 'rgba(232,236,244,.42)';
+  const topPad = Math.max(16, playH * 0.07);
+  g2.fillText('T H E   W I D T H   O F   N O W', cx, topPad + 8);
+  g2.fillStyle = 'rgba(232,236,244,.30)';
+  const m = groups.length, n = notes.length;
+  g2.fillText(n + (n === 1 ? ' note' : ' notes') + '  ·  ' + m + (m === 1 ? ' now' : ' nows'), cx, topPad + 28);
+
+  if (!tappedOnce || !draggedOnce) {
+    g2.fillStyle = 'rgba(232,236,244,.26)';
+    g2.fillText('tap to drop a note into the loop', cx, playH - 34);
+    g2.fillText('drag the band below to stretch the moment', cx, playH - 16);
+  }
+
+  // the loop ring
+  g2.strokeStyle = 'rgba(232,236,244,.10)'; g2.lineWidth = 1.5;
+  g2.beginPath(); g2.arc(cx, cy, R, 0, Math.PI * 2); g2.stroke();
+
+  // moment-bubbles: arcs enclosing notes that currently bind into one now
+  for (const gr of groups) {
+    if (gr.notes.length < 2) continue;
+    const a0 = angOf(gr.lo) - 0.06, a1 = angOf(gr.lo + gr.span) + 0.06;
+    let heat = 0;
+    for (const f of activeFires) if (f.phase === gr.fire) heat = Math.max(heat, 1 - (now - f.t) / 0.5);
+    g2.strokeStyle = 'rgba(127,212,255,' + (0.10 + 0.28 * Math.max(0, heat)) + ')';
+    g2.lineWidth = 22;
+    g2.lineCap = 'round';
+    g2.beginPath(); g2.arc(cx, cy, R, a0, a1); g2.stroke();
+  }
+
+  // playhead
+  {
+    const a = angOf(phase);
+    g2.strokeStyle = 'rgba(232,236,244,.35)'; g2.lineWidth = 1.5;
+    g2.beginPath();
+    g2.moveTo(cx + Math.cos(a) * (R - 16), cy + Math.sin(a) * (R - 16));
+    g2.lineTo(cx + Math.cos(a) * (R + 16), cy + Math.sin(a) * (R + 16));
+    g2.stroke();
+  }
+
+  // notes
+  for (const nt of notes) {
+    const a = angOf(nt.phase);
+    const x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R;
+    const since = now - nt.fireAt;
+    const pulse = (since >= 0 && since < 0.45) ? (1 - since / 0.45) : 0;
+    const born = Math.min(1, (now - nt.bornAt) / 0.3);
+    const r = (5.5 + pulse * 6) * (0.4 + 0.6 * born);
+    g2.fillStyle = 'hsla(' + hueOf(nt.deg) + ',75%,' + (60 + pulse * 20) + '%,' + (0.85) + ')';
+    g2.beginPath(); g2.arc(x, y, r, 0, Math.PI * 2); g2.fill();
+    if (pulse > 0) {
+      g2.strokeStyle = 'hsla(' + hueOf(nt.deg) + ',80%,70%,' + pulse * 0.5 + ')';
+      g2.lineWidth = 1.5;
+      g2.beginPath(); g2.arc(x, y, r + 6 + (1 - pulse) * 14, 0, Math.PI * 2); g2.stroke();
+    }
+  }
+
+  // fires: one expanding ring per moment, from the moment's centre
+  for (let i = activeFires.length - 1; i >= 0; i--) {
+    const f = activeFires[i];
+    const u = (now - f.t) / 0.55;
+    if (u > 1) { activeFires.splice(i, 1); continue; }
+    if (u < 0) continue;
+    const a = angOf(f.phase);
+    const x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R;
+    g2.strokeStyle = 'rgba(232,236,244,' + (0.35 * (1 - u)) + ')';
+    g2.lineWidth = 1 + f.n * 0.8;
+    g2.beginPath(); g2.arc(x, y, 8 + u * (18 + f.n * 7), 0, Math.PI * 2); g2.stroke();
+  }
+  while (pendingFires.length && pendingFires[0].t <= now + 0.001) {
+    activeFires.push(pendingFires.shift());
+    pendingFires.sort((a, b) => a.t - b.t);
+  }
+
+  /* ---------- the band: the width of now, made draggable ---------- */
+  const by = vh - bandH;
+  g2.fillStyle = 'rgba(255,255,255,.035)';
+  g2.fillRect(0, by, vw, bandH);
+  g2.strokeStyle = 'rgba(255,255,255,.08)';
+  g2.beginPath(); g2.moveTo(0, by); g2.lineTo(vw, by); g2.stroke();
+  // the core: its width IS the window, as a share of the whole loop
+  const pad = 18, trackW = vw - pad * 2, midY = by + bandH * 0.42;
+  const coreW = Math.max(6, trackW * (W / L));
+  const grad = g2.createLinearGradient(cx - coreW / 2, 0, cx + coreW / 2, 0);
+  grad.addColorStop(0, 'rgba(127,212,255,.75)');
+  grad.addColorStop(1, 'rgba(233,140,255,.75)');
+  g2.strokeStyle = 'rgba(255,255,255,.10)'; g2.lineWidth = 2;
+  g2.beginPath(); g2.moveTo(pad, midY); g2.lineTo(vw - pad, midY); g2.stroke();
+  g2.strokeStyle = grad; g2.lineWidth = 10; g2.lineCap = 'round';
+  g2.beginPath(); g2.moveTo(cx - coreW / 2, midY); g2.lineTo(cx + coreW / 2, midY); g2.stroke();
+  g2.fillStyle = 'rgba(232,236,244,.5)';
+  g2.fillText('the width of now · ' + (W < 1 ? Math.round(W * 1000) + ' ms' : W.toFixed(2) + ' s'),
+              cx, by + bandH * 0.76);
+}
+
+/* ============================== touch ============================== */
+let pointer = null; // {id, mode, x0, y0, moved}
+function setSliderFromDrag(dx) {
+  sliderX = Math.max(0, Math.min(1, sliderX + dx / (vw * 0.85)));
+  computeGroups();
+}
+cv.addEventListener('pointerdown', e => {
+  if (!ctx) return;
+  cv.setPointerCapture(e.pointerId);
+  const inBand = e.clientY > vh - bandH;
+  pointer = { id: e.pointerId, mode: inBand ? 'band' : 'play', x: e.clientX, y: e.clientY, moved: 0 };
+});
+cv.addEventListener('pointermove', e => {
+  if (!pointer || e.pointerId !== pointer.id) return;
+  const dx = e.clientX - pointer.x;
+  pointer.moved += Math.abs(dx) + Math.abs(e.clientY - pointer.y);
+  if (pointer.mode === 'band') { setSliderFromDrag(dx); if (pointer.moved > 6) draggedOnce = true; }
+  pointer.x = e.clientX; pointer.y = e.clientY;
+});
+cv.addEventListener('pointerup', e => {
+  if (!pointer || e.pointerId !== pointer.id) return;
+  if (pointer.mode === 'play' && pointer.moved < 12) {
+    // a tap drops a note at the playhead, pitch from height
+    const playH = vh - bandH;
+    const frac = 1 - Math.max(0, Math.min(1, (e.clientY - playH * 0.12) / (playH * 0.76)));
+    const deg = Math.round(frac * 9);
+    const t = ctx.currentTime;
+    const phase = ((t - anchor) % L + L) % L;
+    const note = { phase, deg, user: true, bornAt: t, fireAt: -9 };
+    notes.push(note);
+    if (notes.length > MAX_NOTES) {
+      const i = notes.findIndex(n => n.user);
+      notes.splice(i >= 0 ? i : 0, 1);
+    }
+    playNote(note, t + 0.02, 1); // sound it immediately, once
+    computeGroups();
+    tappedOnce = true;
+    if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
+  }
+  pointer = null;
+});
+cv.addEventListener('pointercancel', () => { pointer = null; });
+
+document.getElementById('reset').addEventListener('click', () => {
+  if (!ctx) return;
+  seedNotes(); computeGroups();
+});
+
+const overlay = document.getElementById('overlay');
+overlay.addEventListener('click', () => {
+  if (ctx) return;
+  initAudio();
+  if (ctx.state === 'suspended') ctx.resume();
+  overlay.classList.add('gone');
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!ctx) return;
+  if (document.hidden) ctx.suspend(); else ctx.resume();
+});
+
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
