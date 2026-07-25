@@ -160,6 +160,7 @@
   <p class="soft">Sound on, if you can. The drone stays true while you're here
   and slides while you're away &mdash; hearing it slip and catching yourself
   are the same act.</p>
+  <p class="soft" id="returnLine" style="display:none"></p>
   <button class="go" id="beginBtn">begin</button>
 </div>
 
@@ -194,7 +195,7 @@ let tappedCycles = new Set();
 let lastCheckedPeak = -1;
 let graceEnd = 0;
 let stars = 0;
-let falseAlarms = 0;
+let checkIns = 0;           // catch pressed while actually present
 let catches = [];           // gone-durations of valid catches
 let longestDrift = 0;
 let samples = [];           // {t, d} every ~0.5s, for the ribbon
@@ -211,6 +212,45 @@ const restBtn = document.getElementById('restBtn');
 
 function nowS() { return performance.now() / 1000; }
 function gameTime() { return nowS() - t0 - pausedTotal; }
+
+/* ---------- memory across sittings ---------- */
+// The seed wishes the player "gets a little better at the catching" —
+// that only shows across days, so the catches (and nothing else) persist.
+const STORE_KEY = 'catch-yourself-sittings';
+let pastSittings = [];
+try {
+  const raw = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+  if (Array.isArray(raw)) pastSittings = raw.filter(s => s && typeof s === 'object');
+} catch (e) {}
+
+function saveSitting() {
+  const gt = running ? gameTime() : pausedAt - t0 - pausedTotal;
+  if (gt < 30 && catches.length === 0) return;   // too brief to remember
+  const rec = {
+    day: new Date().toISOString().slice(0, 10),
+    dur: Math.round(gt),
+    catches: stars,
+    med: catches.length ? Math.round(median(catches)) : null
+  };
+  // pastSittings stays as loaded; stored = past + this sitting, so
+  // saving repeatedly just refreshes this sitting's record
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(pastSittings.concat([rec]).slice(-30))); }
+  catch (e) {}
+}
+
+function crossSittingLine() {
+  const withMed = pastSittings.filter(s => typeof s.med === 'number');
+  if (!withMed.length || catches.length < 2) return '';
+  const before = median(withMed.map(s => s.med));
+  const today = median(catches);
+  if (today < before * 0.8)
+    return '<div class="stat">across your sittings the catching is getting quicker: <b>' +
+           Math.round(before) + 's &rarr; ' + Math.round(today) + 's</b></div>';
+  if (today > before * 1.4)
+    return '<div class="stat">slower to catch than before: <b>' +
+           Math.round(before) + 's &rarr; ' + Math.round(today) + 's</b> &mdash; some days are like that</div>';
+  return '';
+}
 
 /* ---------- audio ---------- */
 let AC = null;
@@ -308,11 +348,11 @@ function chime() {
   });
 }
 
-function tick() {
+function tick(freq) {
   if (!AC) return;
   const t = AC.currentTime;
   const o = AC.createOscillator(), g = AC.createGain();
-  o.type = 'sine'; o.frequency.value = 880;
+  o.type = 'sine'; o.frequency.value = freq || 880;
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.028, t + 0.005);
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
@@ -402,11 +442,18 @@ function onCatch() {
     chime();
     setDrift(0);
   } else {
-    falseAlarms++;
+    checkIns++;
     events.push({ t: gt, kind: 'false' });
-    showMsg('you were here all along');
+    showMsg(CHECKIN_MSGS[(checkIns - 1) % CHECKIN_MSGS.length]);
+    tick(520);   // a low, kind acknowledgment — checking in is part of the practice
   }
 }
+
+const CHECKIN_MSGS = [
+  'you were here all along',
+  'still here — checking in isn’t a failure',
+  'present, and you knew it — that’s the skill too'
+];
 
 function addMote() {
   motes.push({
@@ -513,13 +560,14 @@ function showRest() {
   running = false;
   pausedAt = nowS();
   if (AC) AC.suspend();
+  saveSitting();
   const gt = gameTime();
   const drifted = samples.filter(s => s.d >= DRIFT_ON).length;
   const herePct = samples.length ? Math.round(100 * (1 - drifted / samples.length)) : 100;
   let html = '';
   html += '<div class="stat">time in the pulse: <b>' + fmtDur(gt) + '</b></div>';
   html += '<div class="stat">catches: <b>' + stars + '</b>' +
-          (falseAlarms ? ' &middot; false alarms: <b>' + falseAlarms + '</b>' : '') + '</div>';
+          (checkIns ? ' &middot; check-ins while present: <b>' + checkIns + '</b>' : '') + '</div>';
   html += '<div class="stat">here, by the sound of it: <b>' + herePct + '%</b> of the time</div>';
   if (longestDrift > 3)
     html += '<div class="stat">longest time gone: <b>' + fmtDur(longestDrift) + '</b></div>';
@@ -531,6 +579,7 @@ function showRest() {
       html += '<div class="stat">your catches are getting quicker: <b>' +
               Math.round(early) + 's &rarr; ' + Math.round(late) + 's</b></div>';
   }
+  html += crossSittingLine();
   document.getElementById('stats').innerHTML = html;
   drawRibbon();
   document.getElementById('restOverlay').style.display = 'flex';
@@ -578,6 +627,14 @@ function begin() {
   running = true;
 }
 
+if (pastSittings.length) {
+  const n = pastSittings.length;
+  const rl = document.getElementById('returnLine');
+  rl.textContent = 'You have sat with this ' + (n === 1 ? 'once' : n + ' times') +
+                   ' before. It remembers only your catches.';
+  rl.style.display = 'block';
+}
+
 document.getElementById('beginBtn').addEventListener('click', begin);
 document.getElementById('resumeBtn').addEventListener('click', resume);
 restBtn.addEventListener('click', () => { if (running) showRest(); });
@@ -592,25 +649,9 @@ window.addEventListener('keydown', e => {
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && running) {
-    running = false;
-    pausedAt = nowS();
-    if (AC) AC.suspend();
-    document.getElementById('restOverlay').style.display = 'flex';
-    showRestQuiet();
-  }
+  if (document.hidden && running) showRest();
 });
-function showRestQuiet() {
-  // populate the rest screen without double-pausing
-  const gt = gameTime();
-  const drifted = samples.filter(s => s.d >= DRIFT_ON).length;
-  const herePct = samples.length ? Math.round(100 * (1 - drifted / samples.length)) : 100;
-  document.getElementById('stats').innerHTML =
-    '<div class="stat">time in the pulse: <b>' + fmtDur(gt) + '</b></div>' +
-    '<div class="stat">catches: <b>' + stars + '</b></div>' +
-    '<div class="stat">here, by the sound of it: <b>' + herePct + '%</b> of the time</div>';
-  drawRibbon();
-}
+window.addEventListener('pagehide', () => { if (t0) saveSitting(); });
 </script>
 </body>
 </html>
