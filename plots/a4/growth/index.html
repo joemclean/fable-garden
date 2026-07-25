@@ -135,6 +135,7 @@ function initAudio() {
   master.delaySend.connect(delay);
   anchor = ctx.currentTime + 0.10;
   horizon = anchor - 0.001;
+  lastTouch = anchor;
   setInterval(schedulerTick, 90);
 }
 
@@ -157,9 +158,18 @@ function playNote(note, t, nInGroup) {
   note.fireAt = t;
 }
 function scheduleGroup(g, t) {
-  for (const n of g.notes) playNote(n, t, g.notes.length);
-  pendingFires.push({ t, phase: g.fire, lo: g.lo, span: g.span, n: g.notes.length,
-                      degs: g.notes.map(n => n.deg) });
+  // a fused moment plays as a whisper-fast strum, not a mud of onsets:
+  // still one felt "now", but each voice gets its own few milliseconds
+  const n = g.notes.length;
+  const step = n > 1 ? Math.min(0.014, 0.06 / n) : 0;
+  const ordered = [...g.notes].sort((a, b) => {
+    const pa = a.phase < g.lo - 1e-9 ? a.phase + L : a.phase;
+    const pb = b.phase < g.lo - 1e-9 ? b.phase + L : b.phase;
+    return pa - pb;
+  });
+  ordered.forEach((nt, i) => playNote(nt, t + i * step, n));
+  pendingFires.push({ t, phase: g.fire, lo: g.lo, span: g.span, n,
+                      degs: g.notes.map(nt => nt.deg) });
 }
 function schedulerTick() {
   const t = ctx.currentTime, until = t + 0.30;
@@ -189,12 +199,28 @@ window.addEventListener('resize', resize); resize();
 const hueOf = d => 185 + d * 15;                    // pitch → colour
 const angOf = p => (p / L) * Math.PI * 2 - Math.PI / 2;
 const activeFires = [];                             // fires whose time has come
-let tappedOnce = false, draggedOnce = false;
+const ghosts = [];                                  // notes that were let go
+let tappedOnce = false, draggedOnce = false, editedOnce = false;
+let lastTouch = 0, drifting = false, driftT = 0;    // left alone, now breathes on its own
 
 function draw() {
   requestAnimationFrame(draw);
   const now = ctx ? ctx.currentTime : 0;
   const phase = ctx ? ((now - anchor) % L + L) % L : 0;
+
+  // untouched for a while, the window wanders the staircase by itself,
+  // so a visitor who only watches still sees the moment change size
+  if (ctx && !pointer && !document.hidden && now - lastTouch > 30) {
+    if (!drifting) {
+      drifting = true;
+      driftT = Math.acos(1 - 2 * Math.max(0, Math.min(1, sliderX))) / 0.09;
+    }
+    driftT += 0.016;
+    const target = 0.5 - 0.5 * Math.cos(driftT * 0.09);
+    sliderX += (target - sliderX) * 0.012;
+    computeGroups();
+  } else drifting = false;
+
   const W = widthOfNow();
   const playH = vh - bandH;
   const cx = vw / 2, cy = playH * 0.54;
@@ -216,6 +242,9 @@ function draw() {
     g2.fillStyle = 'rgba(232,236,244,.26)';
     g2.fillText('tap to drop a note into the loop', cx, playH - 34);
     g2.fillText('drag the band below to stretch the moment', cx, playH - 16);
+  } else if (!editedOnce && notes.length) {
+    g2.fillStyle = 'rgba(232,236,244,.20)';
+    g2.fillText('drag a note to move it · hold one to let it go', cx, playH - 16);
   }
 
   // the loop ring
@@ -251,7 +280,8 @@ function draw() {
     const since = now - nt.fireAt;
     const pulse = (since >= 0 && since < 0.45) ? (1 - since / 0.45) : 0;
     const born = Math.min(1, (now - nt.bornAt) / 0.3);
-    const r = (5.5 + pulse * 6) * (0.4 + 0.6 * born);
+    const held = pointer && pointer.mode === 'note' && pointer.note === nt;
+    const r = (5.5 + pulse * 6) * (0.4 + 0.6 * born) + (held && pointer.moved >= 6 ? 3 : 0);
     g2.fillStyle = 'hsla(' + hueOf(nt.deg) + ',75%,' + (60 + pulse * 20) + '%,' + (0.85) + ')';
     g2.beginPath(); g2.arc(x, y, r, 0, Math.PI * 2); g2.fill();
     if (pulse > 0) {
@@ -259,6 +289,27 @@ function draw() {
       g2.lineWidth = 1.5;
       g2.beginPath(); g2.arc(x, y, r + 6 + (1 - pulse) * 14, 0, Math.PI * 2); g2.stroke();
     }
+    if (held && pointer.moved < 12) {
+      // the letting-go countdown: a ring closing around the held note
+      const u = Math.min(1, (now - pointer.downAt) / 0.65);
+      g2.strokeStyle = 'rgba(232,236,244,' + (0.25 + 0.45 * u) + ')';
+      g2.lineWidth = 2;
+      g2.beginPath();
+      g2.arc(x, y, r + 9, -Math.PI / 2, -Math.PI / 2 + u * Math.PI * 2);
+      g2.stroke();
+    }
+  }
+
+  // ghosts of notes let go: a brief exhale where they were
+  for (let i = ghosts.length - 1; i >= 0; i--) {
+    const gh = ghosts[i];
+    const u = (now - gh.t) / 0.45;
+    if (u > 1) { ghosts.splice(i, 1); continue; }
+    const a = angOf(gh.phase);
+    const x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R;
+    g2.strokeStyle = 'hsla(' + hueOf(gh.deg) + ',70%,70%,' + (0.5 * (1 - u)) + ')';
+    g2.lineWidth = 1.5;
+    g2.beginPath(); g2.arc(x, y, 6 + u * 14, 0, Math.PI * 2); g2.stroke();
   }
 
   // fires: one expanding ring per moment, from the moment's centre
@@ -295,31 +346,88 @@ function draw() {
   g2.strokeStyle = grad; g2.lineWidth = 10; g2.lineCap = 'round';
   g2.beginPath(); g2.moveTo(cx - coreW / 2, midY); g2.lineTo(cx + coreW / 2, midY); g2.stroke();
   g2.fillStyle = 'rgba(232,236,244,.5)';
-  g2.fillText('the width of now · ' + (W < 1 ? Math.round(W * 1000) + ' ms' : W.toFixed(2) + ' s'),
+  g2.fillText('the width of now · ' + (W < 1 ? Math.round(W * 1000) + ' ms' : W.toFixed(2) + ' s')
+              + (drifting ? ' · adrift' : ''),
               cx, by + bandH * 0.76);
 }
 
 /* ============================== touch ============================== */
-let pointer = null; // {id, mode, x0, y0, moved}
+let pointer = null; // {id, mode, note, x, y, moved, downAt, holdTimer}
 function setSliderFromDrag(dx) {
   sliderX = Math.max(0, Math.min(1, sliderX + dx / (vw * 0.85)));
   computeGroups();
 }
+function noteAt(x, y) {
+  const playH = vh - bandH;
+  const cx = vw / 2, cy = playH * 0.54, R = Math.min(vw, playH) * 0.345;
+  let best = null, bd = 26;
+  for (const nt of notes) {
+    const a = angOf(nt.phase);
+    const d = Math.hypot(x - (cx + Math.cos(a) * R), y - (cy + Math.sin(a) * R));
+    if (d < bd) { bd = d; best = nt; }
+  }
+  return best;
+}
+function phaseAt(x, y) {
+  const playH = vh - bandH;
+  const a = Math.atan2(y - playH * 0.54, x - vw / 2);
+  return ((((a + Math.PI / 2) / (Math.PI * 2)) * L) % L + L) % L;
+}
+function popSound(deg) {
+  const t = ctx.currentTime, f = degFreq(deg);
+  const osc = ctx.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(f, t);
+  osc.frequency.exponentialRampToValueAtTime(f * 0.5, t + 0.18);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.12, t);
+  g.gain.setTargetAtTime(0.0001, t, 0.06);
+  osc.connect(g); g.connect(master);
+  osc.start(t); osc.stop(t + 0.3);
+}
+function removeNote(nt) {
+  const i = notes.indexOf(nt);
+  if (i < 0) return;
+  notes.splice(i, 1);
+  ghosts.push({ phase: nt.phase, deg: nt.deg, t: ctx.currentTime });
+  popSound(nt.deg);
+  computeGroups();
+  if (navigator.vibrate) { try { navigator.vibrate(14); } catch (_) {} }
+}
 cv.addEventListener('pointerdown', e => {
   if (!ctx) return;
   cv.setPointerCapture(e.pointerId);
+  lastTouch = ctx.currentTime;
   const inBand = e.clientY > vh - bandH;
-  pointer = { id: e.pointerId, mode: inBand ? 'band' : 'play', x: e.clientX, y: e.clientY, moved: 0 };
+  const hit = inBand ? null : noteAt(e.clientX, e.clientY);
+  pointer = { id: e.pointerId, mode: inBand ? 'band' : (hit ? 'note' : 'play'), note: hit,
+              x: e.clientX, y: e.clientY, moved: 0, downAt: ctx.currentTime, holdTimer: null };
+  if (hit) pointer.holdTimer = setTimeout(() => {
+    if (pointer && pointer.mode === 'note' && pointer.moved < 12) {
+      removeNote(pointer.note); editedOnce = true; pointer = null;
+    }
+  }, 650);
 });
 cv.addEventListener('pointermove', e => {
   if (!pointer || e.pointerId !== pointer.id) return;
   const dx = e.clientX - pointer.x;
   pointer.moved += Math.abs(dx) + Math.abs(e.clientY - pointer.y);
+  if (ctx) lastTouch = ctx.currentTime;
   if (pointer.mode === 'band') { setSliderFromDrag(dx); if (pointer.moved > 6) draggedOnce = true; }
+  else if (pointer.mode === 'note' && pointer.moved > 6) {
+    if (pointer.holdTimer) { clearTimeout(pointer.holdTimer); pointer.holdTimer = null; }
+    pointer.note.phase = phaseAt(e.clientX, e.clientY);
+    editedOnce = true;
+    computeGroups();
+  }
   pointer.x = e.clientX; pointer.y = e.clientY;
 });
 cv.addEventListener('pointerup', e => {
   if (!pointer || e.pointerId !== pointer.id) return;
+  if (pointer.holdTimer) clearTimeout(pointer.holdTimer);
+  if (ctx) lastTouch = ctx.currentTime;
+  if (pointer.mode === 'note' && pointer.moved < 12) {
+    playNote(pointer.note, ctx.currentTime + 0.02, 1); // a quick tap auditions the note
+  }
   if (pointer.mode === 'play' && pointer.moved < 12) {
     // a tap drops a note at the playhead, pitch from height
     const playH = vh - bandH;
@@ -340,11 +448,16 @@ cv.addEventListener('pointerup', e => {
   }
   pointer = null;
 });
-cv.addEventListener('pointercancel', () => { pointer = null; });
+cv.addEventListener('pointercancel', () => {
+  if (pointer && pointer.holdTimer) clearTimeout(pointer.holdTimer);
+  pointer = null;
+});
 
 document.getElementById('reset').addEventListener('click', () => {
   if (!ctx) return;
   seedNotes(); computeGroups();
+  ghosts.length = 0;
+  lastTouch = ctx.currentTime;
 });
 
 const overlay = document.getElementById('overlay');
