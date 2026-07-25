@@ -19,8 +19,12 @@
   #veil h1 { font-weight: normal; font-size: 21px; letter-spacing: .13em;
              color: #a9a294; margin: 0 0 1em; }
   #veil p { font-size: 15px; line-height: 1.7; color: #6f6a60; margin: .25em 0; max-width: 21em; }
-  #veil .go { margin-top: 2.2em; font-size: 14px; color: #8a8478; letter-spacing: .08em;
-              animation: breathe 2.6s ease-in-out infinite; }
+  #modes { margin-top: 2.2em; display: flex; flex-direction: column; gap: 13px; align-items: center; }
+  .mode { font-family: inherit; font-size: 14px; letter-spacing: .1em; color: #cfcabe;
+          background: none; border: 1px solid #3a362f; border-radius: 22px;
+          padding: 10px 28px; opacity: .85; }
+  .mode:active { background: #1c1a17; }
+  #modenote { margin-top: 10px; font-size: 12.5px; color: #56514a; font-style: italic; }
   @keyframes breathe { 0%,100% { opacity: .35 } 50% { opacity: .9 } }
 
   /* play screen */
@@ -30,7 +34,8 @@
   #quale { width: min(38vw, 24vh); height: min(38vw, 24vh); border-radius: 50%;
            animation: pulse 5s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.045) } }
-  #qlabel { margin-top: 12px; font-size: 13px; color: #6f6a60; letter-spacing: .06em; }
+  #qlabel { margin-top: 12px; font-size: 13px; color: #6f6a60; letter-spacing: .06em;
+            max-width: 22em; text-align: center; }
   #task { margin-top: 4px; font-size: 13px; color: #56514a; font-style: italic; }
 
   #strips { flex: 1; display: flex; justify-content: center; gap: 5vw;
@@ -56,6 +61,18 @@
           box-shadow: 0 0 0 1px #26231f; }
   .pair div { width: 17px; height: 17px; }
 
+  /* handoff (two-player) */
+  #handoff { position: fixed; inset: 0; z-index: 38; display: none; flex-direction: column;
+             align-items: center; justify-content: center; text-align: center;
+             background: #0a0908; padding: 0 2.2em; }
+  #handoff.on { display: flex; }
+  #handoff h2 { font-weight: normal; font-size: 19px; letter-spacing: .13em;
+                color: #a9a294; margin: 0 0 .9em; }
+  #handoff p { font-size: 14.5px; line-height: 1.7; color: #6f6a60; margin: .2em 0; max-width: 20em; }
+  #listenbtn { margin-top: 2.4em; font-family: inherit; font-size: 14px; letter-spacing: .12em;
+               color: #cfcabe; background: none; border: 1px solid #3a362f; border-radius: 22px;
+               padding: 10px 30px; opacity: .85; animation: breathe 2.6s ease-in-out infinite; }
+
   /* reveal overlay */
   #reveal { position: fixed; inset: 0; z-index: 35; display: none; flex-direction: column;
             align-items: center; justify-content: center; text-align: center;
@@ -64,7 +81,10 @@
   #reveal.vis { opacity: 1; }
   #listening { font-size: 15px; color: #6f6a60; font-style: italic; }
   #outcome { display: none; flex-direction: column; align-items: center; }
-  #swatches { display: flex; gap: 14px; }
+  #swatches { display: flex; gap: 0; align-items: flex-start; }
+  #swatches > div { position: relative; z-index: 1; }
+  #seamwrap { z-index: 0 !important; }
+  #seam { width: min(9vw, 40px); height: min(34vw, 150px); margin: 0 -10px; }
   .bigswatch { width: min(34vw, 150px); height: min(34vw, 150px); border-radius: 18px; }
   .swlabel { margin-top: 10px; font-size: 12.5px; color: #6f6a60; letter-spacing: .05em; }
   #closeness { margin-top: 26px; font-size: 14px; color: #8a8478; letter-spacing: .06em; }
@@ -72,6 +92,13 @@
              font-style: italic; max-width: 20em; }
   #meta { margin-top: 16px; font-size: 13px; line-height: 1.6; color: #56514a;
           font-style: italic; max-width: 21em; min-height: 1.2em; }
+  #coda { display: none; flex-direction: column; align-items: center; margin-top: 24px; }
+  #codapairs { display: flex; gap: 6px; }
+  .cpair { display: flex; flex-direction: column; border-radius: 4px; overflow: hidden;
+           box-shadow: 0 0 0 1px #26231f; }
+  .cpair div { width: min(7vw, 30px); height: min(7vw, 30px); }
+  #codaline { margin-top: 15px; font-size: 13.5px; line-height: 1.65; color: #8a8478;
+              font-style: italic; max-width: 22em; }
   #again { margin-top: 30px; font-family: inherit; font-size: 14px; letter-spacing: .12em;
            color: #cfcabe; background: none; border: 1px solid #3a362f; border-radius: 22px;
            padding: 9px 30px; opacity: .85; }
@@ -94,16 +121,28 @@
   <div id="history"></div>
 </div>
 
+<div id="handoff">
+  <h2>pass the phone</h2>
+  <p>the color is hidden now.</p>
+  <p>the other mind should listen, not look.</p>
+  <button id="listenbtn">i&rsquo;m listening</button>
+</div>
+
 <div id="reveal">
   <div id="listening">the other mind listens&hellip;</div>
   <div id="outcome">
     <div id="swatches">
-      <div><div class="bigswatch" id="sw1"></div><div class="swlabel">what you felt</div></div>
-      <div><div class="bigswatch" id="sw2"></div><div class="swlabel">what it heard</div></div>
+      <div><div class="bigswatch" id="sw1"></div><div class="swlabel" id="swl1">what you felt</div></div>
+      <div id="seamwrap"><div id="seam"></div></div>
+      <div><div class="bigswatch" id="sw2"></div><div class="swlabel" id="swl2">what it heard</div></div>
     </div>
     <div id="closeness"></div>
     <div id="verdict"></div>
     <div id="meta"></div>
+    <div id="coda">
+      <div id="codapairs"></div>
+      <div id="codaline"></div>
+    </div>
     <button id="again">another color</button>
   </div>
 </div>
@@ -112,7 +151,11 @@
   <h1>what red sounds like</h1>
   <p>in a moment you&rsquo;ll be given a color. it is yours alone &mdash; the other mind will never see it.</p>
   <p>your only channel across is sound. headphones on.</p>
-  <div class="go">touch anywhere to begin</div>
+  <div id="modes">
+    <button class="mode" id="modemachine">the machine listens</button>
+    <button class="mode" id="modehuman">another mind listens</button>
+  </div>
+  <div id="modenote">with another mind, you&rsquo;ll pass the phone.</div>
 </div>
 
 <script>
@@ -121,13 +164,18 @@
 // ---------- state ----------
 const S = {
   started: false,
+  mode: 'machine',         // machine | human
   round: 0,
   target: null,            // {h,s,l} the private quale
   ctl: { p: 0.5, w: 0.5, m: 0.5 },
+  sentCtl: null,           // frozen tone at the moment of sending (human mode)
+  pick: { h: 180, s: 0.5, l: 0.5 },  // the receiver's working guess (human mode)
   touched: false,          // has the player shaped anything this round
-  phase: 'play',           // play | listening | reveal
+  phase: 'play',           // play | handoff | pick | listening | reveal
   history: [],             // [{sent:{h,s,l}, heard:{h,s,l}}]
 };
+
+const ROUNDS = 7;          // a conversation is seven crossings, then the coda
 
 const $ = id => document.getElementById(id);
 const hsl = c => `hsl(${c.h.toFixed(1)}, ${(c.s*100).toFixed(0)}%, ${(c.l*100).toFixed(0)}%)`;
@@ -171,23 +219,34 @@ function distance(a, b) {
                  + (Math.abs(a.l - b.l) * 1.1) ** 2),
   };
 }
-function verdictFor(sent, heard, dist) {
+function closenessOf(sent, heard) {
+  return clamp(1 - distance(sent, heard).d / 0.85, 0, 1);
+}
+function verdictFor(sent, heard, dist, human) {
   const close = clamp(1 - dist.d / 0.85, 0, 1);
   if (close > 0.93) return 'As close as two minds get. The last inch stays private.';
   const hueErr = dist.dh * 1.25 * ((sent.s + heard.s) / 2),
         satErr = dist.ds * 0.8, litErr = dist.dl * 1.1;
   if (hueErr >= satErr && hueErr >= litErr) {
-    if (dist.dh > 0.28) return `It heard a different color entirely &mdash; ${hueName(heard)} where you felt ${hueName(sent)}.`;
-    return `Almost &mdash; it leaned toward ${hueName(heard)}, a step from your ${hueName(sent)}.`;
+    if (dist.dh > 0.28) return human
+      ? `A different color arrived entirely &mdash; ${hueName(heard)} where they felt ${hueName(sent)}.`
+      : `It heard a different color entirely &mdash; ${hueName(heard)} where you felt ${hueName(sent)}.`;
+    return human
+      ? `Almost &mdash; you heard ${hueName(heard)}, a step from their ${hueName(sent)}.`
+      : `Almost &mdash; it leaned toward ${hueName(heard)}, a step from your ${hueName(sent)}.`;
   }
   if (satErr >= litErr) {
     return sent.s > heard.s
-      ? 'It caught the color but not the blaze &mdash; what arrived was paler than what you felt.'
-      : 'It heard more fire than you felt. What arrived burned brighter.';
+      ? (human ? 'The color crossed but not the blaze &mdash; what you heard was paler than what they felt.'
+               : 'It caught the color but not the blaze &mdash; what arrived was paler than what you felt.')
+      : (human ? 'You heard more fire than they felt. It burned brighter in the crossing.'
+               : 'It heard more fire than you felt. What arrived burned brighter.');
   }
   return sent.l > heard.l
-    ? 'It heard your color heavier than it is.'
-    : 'It heard your color lighter than you felt it.';
+    ? (human ? 'Their color reached you heavier than they felt it.'
+             : 'It heard your color heavier than it is.')
+    : (human ? 'Their color reached you lighter than they felt it.'
+             : 'It heard your color lighter than you felt it.');
 }
 const META_LINES = [
   '',
@@ -196,6 +255,14 @@ const META_LINES = [
   'Its inner grid is coarser than yours. Some of what you feel has nowhere to land.',
   'Notice: you no longer send what you feel. You send what it can hear.',
   'Every language does this to every feeling.',
+];
+const META_HUMAN = [
+  '',
+  '',
+  'Neither of you can check the inside. Only the swatches, side by side.',
+  'You are building a small language only the two of you speak.',
+  'Notice: you have started sending what their ear can catch.',
+  'Every word anyone has ever said works this way.',
 ];
 
 // ---------- audio ----------
@@ -245,10 +312,10 @@ function initAudio() {
     if (!document.hidden && AC.state === 'suspended') AC.resume();
   });
 }
-// The machine hums back what it heard: same instrument, its rounded parameters.
-function humBack(color) {
+// One tone, played once, on its own throat.
+function humTone(ctl) {
   const v = makeVoice();
-  setVoice(v, machineVoice(color), 0.01);
+  setVoice(v, ctl, 0.01);
   const t = AC.currentTime;
   v.out.gain.setValueAtTime(0, t);
   v.out.gain.linearRampToValueAtTime(0.22, t + 0.25);
@@ -256,45 +323,119 @@ function humBack(color) {
   v.out.gain.linearRampToValueAtTime(0, t + 2.1);
   setTimeout(() => { [v.oscA, v.oscB, v.oscC, v.lfo].forEach(o => o.stop()); v.out.disconnect(); }, 2400);
 }
+// The machine hums back what it heard: same instrument, its rounded parameters.
+function humBack(color) { humTone(machineVoice(color)); }
 
 // ---------- rounds ----------
+function setQuale(c) {
+  const q = $('quale');
+  q.style.background = `radial-gradient(circle at 42% 38%, ${hsl({...c, l: clamp(c.l + 0.08, 0, 0.9)})}, ${hsl(c)} 62%, ${hsl({...c, l: c.l * 0.72})})`;
+  q.style.boxShadow = `0 0 70px ${hsl(c)}44`;
+}
+const STRIP_LABELS = { play: ['height', 'warmth', 'shimmer'], pick: ['color', 'fire', 'light'] };
+function setStripLabels(which) {
+  strips.forEach((st, i) => { st.querySelector('.slabel').textContent = STRIP_LABELS[which][i]; });
+}
 function newRound() {
   S.round++;
   S.target = { h: Math.random() * 360, s: 0.55 + Math.random() * 0.4, l: 0.35 + Math.random() * 0.33 };
+  S.pick = { h: 180, s: 0.5, l: 0.5 };
+  S.sentCtl = null;
   S.touched = false;
   S.phase = 'play';
-  const q = $('quale');
-  q.style.background = `radial-gradient(circle at 42% 38%, ${hsl({...S.target, l: clamp(S.target.l + 0.08, 0, 0.9)})}, ${hsl(S.target)} 62%, ${hsl({...S.target, l: S.target.l * 0.72})})`;
-  q.style.boxShadow = `0 0 70px ${hsl(S.target)}44`;
+  setQuale(S.target);
+  $('qlabel').innerHTML = 'yours alone &mdash; the other mind will never see it';
+  $('task').textContent = 'shape a sound that feels like this, then send it';
+  $('send').textContent = 'send it across';
+  setStripLabels('play');
   $('reveal').classList.remove('on', 'vis');
+  if (voice) { setVoice(voice, S.ctl, 0.15); }
   layoutThumbs();
 }
 
 function sendAcross() {
-  if (S.phase !== 'play') return;
-  S.phase = 'listening';
-  voiceLevel(0.05, 0.4);
-  const rv = $('reveal');
-  $('listening').style.display = 'block';
-  $('outcome').style.display = 'none';
-  rv.classList.add('on');
-  requestAnimationFrame(() => rv.classList.add('vis'));
-  setTimeout(() => {
-    const heard = machineHear(S.ctl);
-    const dist = distance(S.target, heard);
-    const close = clamp(1 - dist.d / 0.85, 0, 1);
-    S.history.push({ sent: S.target, heard });
+  if (S.phase === 'play') {
+    if (S.mode === 'human') {
+      // Freeze the tone, hide the color, hand the phone across.
+      S.sentCtl = { ...S.ctl };
+      S.phase = 'handoff';
+      voiceLevel(0.04, 0.3);
+      $('handoff').classList.add('on');
+      return;
+    }
+    S.phase = 'listening';
+    voiceLevel(0.05, 0.4);
+    const rv = $('reveal');
+    $('listening').style.display = 'block';
+    $('outcome').style.display = 'none';
+    rv.classList.add('on');
+    requestAnimationFrame(() => rv.classList.add('vis'));
+    setTimeout(() => {
+      const heard = machineHear(S.ctl);
+      showReveal(heard, false);
+      humBack(heard);
+    }, 1500);
+    return;
+  }
+  if (S.phase === 'pick') {
+    // The receiver commits to the color they heard.
+    const heard = { ...S.pick };
+    S.phase = 'listening';
+    voiceLevel(0.05, 0.4);
+    const rv = $('reveal');
     $('listening').style.display = 'none';
-    $('outcome').style.display = 'flex';
-    $('sw1').style.background = hsl(S.target);
-    $('sw2').style.background = hsl(heard);
-    $('closeness').textContent = `${Math.round(close * 100)}% of it crossed`;
-    $('verdict').innerHTML = verdictFor(S.target, heard, dist);
-    $('meta').textContent = META_LINES[Math.min(S.round, META_LINES.length - 1)] || '';
-    renderHistory();
-    humBack(heard);
-    S.phase = 'reveal';
-  }, 1500);
+    $('outcome').style.display = 'none';
+    rv.classList.add('on');
+    requestAnimationFrame(() => rv.classList.add('vis'));
+    setTimeout(() => {
+      showReveal(heard, true);
+      humTone(S.sentCtl);          // the sound hangs between you one last time
+    }, 600);
+  }
+}
+
+function showReveal(heard, human) {
+  const dist = distance(S.target, heard);
+  const close = clamp(1 - dist.d / 0.85, 0, 1);
+  S.history.push({ sent: S.target, heard });
+  $('listening').style.display = 'none';
+  $('outcome').style.display = 'flex';
+  $('sw1').style.background = hsl(S.target);
+  $('sw2').style.background = hsl(heard);
+  $('seam').style.background = `linear-gradient(90deg, ${hsl(S.target)}, ${hsl(heard)})`;
+  $('swl1').textContent = human ? 'what they felt' : 'what you felt';
+  $('swl2').textContent = human ? 'what you heard' : 'what it heard';
+  $('closeness').textContent = `${Math.round(close * 100)}% of it crossed`;
+  $('verdict').innerHTML = verdictFor(S.target, heard, dist, human);
+  const metas = human ? META_HUMAN : META_LINES;
+  $('meta').textContent = metas[Math.min(S.round, metas.length - 1)] || '';
+  renderHistory();
+  if (S.round >= ROUNDS) showCoda(human);
+  else {
+    $('coda').style.display = 'none';
+    $('again').textContent = human ? 'trade places' : 'another color';
+  }
+  S.phase = 'reveal';
+}
+
+function showCoda(human) {
+  // The history strip becomes the piece: every doomed translation in a row.
+  const cp = $('codapairs'); cp.innerHTML = '';
+  let sum = 0;
+  S.history.forEach(({ sent, heard }) => {
+    sum += closenessOf(sent, heard);
+    const col = document.createElement('div'); col.className = 'cpair';
+    const a = document.createElement('div'); a.style.background = hsl(sent);
+    const b = document.createElement('div'); b.style.background = hsl(heard);
+    col.appendChild(a); col.appendChild(b); cp.appendChild(col);
+  });
+  const avg = Math.round(sum / S.history.length * 100);
+  $('codaline').innerHTML =
+    `${S.history.length} crossings; on average ${avg}% made it over. ` +
+    (human ? 'The gap never closed. Look how much crossed anyway.'
+           : 'The gap never closes. Look how much crossed anyway.');
+  $('coda').style.display = 'flex';
+  $('again').textContent = 'begin again';
 }
 
 function renderHistory() {
@@ -309,9 +450,17 @@ function renderHistory() {
 
 // ---------- strips ----------
 const strips = [...document.querySelectorAll('.strip')];
+const PICK_GET = { p: () => S.pick.h / 360, w: () => S.pick.s, m: () => S.pick.l };
+function setPick(k, v) {
+  if (k === 'p') S.pick.h = v * 360;
+  else if (k === 'w') S.pick.s = v;
+  else S.pick.l = clamp(v, 0.06, 0.94);
+  setQuale(S.pick);
+}
 function layoutThumbs() {
   strips.forEach(st => {
-    const k = st.dataset.k, v = S.ctl[k];
+    const k = st.dataset.k;
+    const v = S.phase === 'pick' ? PICK_GET[k]() : S.ctl[k];
     st.querySelector('.thumb').style.top = `${(1 - v) * 92 + 3}%`;
   });
 }
@@ -322,22 +471,30 @@ function stripValue(st, clientY) {
 strips.forEach(st => {
   const k = st.dataset.k;
   st.addEventListener('pointerdown', e => {
-    if (S.phase !== 'play') return;
+    if (S.phase !== 'play' && S.phase !== 'pick') return;
     st.setPointerCapture(e.pointerId);
     st.classList.add('live');
-    S.ctl[k] = stripValue(st, e.clientY);
-    S.touched = true;
-    setVoice(voice, S.ctl);
-    voiceLevel(0.17);
+    const v = stripValue(st, e.clientY);
+    if (S.phase === 'pick') setPick(k, v);
+    else {
+      S.ctl[k] = v;
+      S.touched = true;
+      setVoice(voice, S.ctl);
+      voiceLevel(0.17);
+    }
     layoutThumbs();
   });
   st.addEventListener('pointermove', e => {
     if (!st.classList.contains('live')) return;
-    S.ctl[k] = stripValue(st, e.clientY);
-    setVoice(voice, S.ctl);
+    const v = stripValue(st, e.clientY);
+    if (S.phase === 'pick') setPick(k, v);
+    else { S.ctl[k] = v; setVoice(voice, S.ctl); }
     layoutThumbs();
   });
-  const end = () => { st.classList.remove('live'); if (S.phase === 'play') voiceLevel(0.06, 0.3); };
+  const end = () => {
+    st.classList.remove('live');
+    if (S.phase === 'play') voiceLevel(0.06, 0.3);
+  };
   st.addEventListener('pointerup', end);
   st.addEventListener('pointercancel', end);
 });
@@ -345,18 +502,38 @@ strips.forEach(st => {
 $('send').addEventListener('click', sendAcross);
 $('again').addEventListener('click', () => {
   if (S.phase !== 'reveal') return;
+  if (S.round >= ROUNDS) { S.round = 0; S.history = []; renderHistory(); }
   newRound();
   voiceLevel(0.06, 0.3);
 });
 
+// ---------- handoff (two-player) ----------
+$('listenbtn').addEventListener('click', () => {
+  if (S.phase !== 'handoff') return;
+  S.phase = 'pick';
+  $('handoff').classList.remove('on');
+  // The receiver's canvas: the quale circle now shows their guess, not the secret.
+  setQuale(S.pick);
+  $('qlabel').innerHTML = 'their sound is humming &mdash; shape the color you hear';
+  $('task').textContent = 'only the sound can guide you';
+  $('send').textContent = 'this is what i hear';
+  setStripLabels('pick');
+  setVoice(voice, S.sentCtl, 0.1);
+  voiceLevel(0.13, 0.3);
+  layoutThumbs();
+});
+
 // ---------- start ----------
-$('veil').addEventListener('pointerdown', () => {
+function begin(mode) {
   if (S.started) return;
   S.started = true;
+  S.mode = mode;
   initAudio();
   if (AC.state === 'suspended') AC.resume();
   $('veil').classList.add('gone');
   newRound();
-});
+}
+$('modemachine').addEventListener('click', () => begin('machine'));
+$('modehuman').addEventListener('click', () => begin('human'));
 layoutThumbs();
 </script>
