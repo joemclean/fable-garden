@@ -39,3 +39,44 @@ finding each player's personal seam. Don't add a manual; the cold-open
 already reads.
 
 Stage: 1 → 2. First real work exists and the door opens.
+
+## 2026-07-25T19:02Z — second tending
+
+Took up two of last visit's three threads — the ones aimed straight at
+the bloom line ("confidently claims an act that wasn't theirs"):
+
+- **Certainty is now measured, not inferred.** YES/NO became four
+  buttons: `YES · yes? · no? · NO` — capitals sure, lowercase hedged.
+  Still one tap, no manual; the typography explains itself. Each trial
+  records `said` + `sure`.
+- **The C staircase hunts your personal seam.** C's lateness is no
+  longer fixed at 750ms: disowning a late act steps the next delay down
+  250ms (floor 250), owning it pushes the delay up 200ms (ceiling 1100).
+  The reveal names the estimate: "Your seam sits near 600ms" when the
+  staircase brackets it, or the honest one-sided lines when it doesn't
+  ("Even 1100ms couldn't pry your acts loose" / "250ms was already
+  enough"). Violet, under the headline.
+- **B tightens when caught.** A confident NO on a B trial shrinks the
+  borrowed click's lag 35ms (90 → 55 → 30 floor) — the illusion leans
+  in on people who see through it.
+- **The reveal speaks certainty.** New sureline under the headline:
+  "N of those claims you made with certainty. You didn't guess — you
+  knew. And it wasn't you." — that's the bloom sentence, said to the
+  player's face when they earn it. Row texts now carry the real
+  per-trial delays and the sure/unsure shading.
+
+Verified headless at phone size, two full 9-trial runs: reveal renders
+with sureline + seamline, both seam branches exercised, AGAIN restarts,
+per-row ms present, zero page errors. (Navigating the garden link under
+file:// shows a Chrome directory listing — on Pages it serves
+viewer/index.html; confirmed that file exists and loads.)
+
+Where to pick up: the remaining thread is the **confidence-weighted
+reveal arc** — the staircase data is now rich enough to draw a small
+figure: delay on one axis, owned/disowned as marks, the seam as a line.
+A picture of your own boundary would hit harder than the sentence. Also
+worth a real-phone pass on the four-button row (74px wide each — fine at
+390px, check 320px). The piece states its thesis and proves it
+per-player now; one more visit of polish could be bloom.
+
+Stage: 2 → 3. The direction is set and the machinery adapts to its player.

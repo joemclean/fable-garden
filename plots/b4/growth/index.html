@@ -75,11 +75,15 @@
   }
   #ask.on { transform: translateY(0); }
   #ask .q { font-size: 15px; letter-spacing: .18em; color: rgba(233,236,242,.9); margin-bottom: 22px; }
-  #ask .row { display: flex; justify-content: center; gap: 18px; }
+  #ask .row { display: flex; justify-content: center; gap: 10px; }
   #ask button {
-    font-family: inherit; font-size: 13px; letter-spacing: .2em;
+    font-family: inherit; font-size: 13px; letter-spacing: .14em;
     background: none; color: #e9ecf2; border: 1px solid rgba(233,236,242,.3);
-    border-radius: 999px; padding: 13px 0; width: 118px; cursor: pointer;
+    border-radius: 999px; padding: 13px 0; width: 74px; cursor: pointer;
+  }
+  #ask button[data-sure="0"] {
+    color: rgba(233,236,242,.55); border-color: rgba(233,236,242,.16);
+    font-size: 12px;
   }
   #ask button:active { background: rgba(233,236,242,.12); }
 
@@ -101,6 +105,7 @@
   #reveal h2 .claimed { color: #ffd27f; }
   #reveal h2 .disowned { color: #c9a6ff; }
   #reveal .both { font-size: 13px; color: rgba(233,236,242,.55); margin: 10px 0 0; }
+  #reveal .seam { font-size: 12.5px; line-height: 1.7; color: rgba(201,166,255,.75); margin: 16px 0 0; }
   #reveal .rows { margin: 34px 0 8px; }
   .trow {
     display: flex; align-items: center; gap: 14px;
@@ -140,14 +145,18 @@
 <div id="ask">
   <div class="q">DID YOU DO THAT?</div>
   <div class="row">
-    <button id="yes">YES</button>
-    <button id="no">NO</button>
+    <button data-said="1" data-sure="1">YES</button>
+    <button data-said="1" data-sure="0">yes?</button>
+    <button data-said="0" data-sure="0">no?</button>
+    <button data-said="0" data-sure="1">NO</button>
   </div>
 </div>
 
 <div id="reveal"><div class="inner">
   <h2 id="headline"></h2>
+  <p class="both" id="sureline"></p>
   <p class="both" id="bothline"></p>
+  <p class="seam" id="seamline"></p>
   <div class="rows" id="rows"></div>
   <p class="close">The feeling of <i>I did that</i> is not a witness — it is a
   verdict, written after the fact, from whatever evidence arrives in time.
@@ -273,6 +282,11 @@ function makeOrder() { return ['A'].concat(shuffle(['A', 'A', 'B', 'B', 'B', 'C'
 let order = [], trials = [], idx = 0;
 let state = 'intro';       // intro | await | moving | frozen | done
 let cur = null;
+/* adaptive levers. bDelay: the borrowed click's lag on B trials — tightens
+   toward the binding sweet spot when a B is caught cleanly. cDelay: the
+   lateness of C trials — a staircase hunting each player's personal seam,
+   the delay past which their own act stops feeling like theirs. */
+let bDelay = 90, cDelay = 750;
 
 const overlay = document.getElementById('overlay');
 const hint = document.getElementById('hint');
@@ -292,6 +306,7 @@ function paintProgress() {
 
 function begin() {
   order = makeOrder(); trials = []; idx = 0;
+  bDelay = 90; cDelay = 750;
   buildProgress(); progress.classList.add('on');
   reveal.classList.remove('on');
   place(W / 2, H * 0.42);
@@ -323,32 +338,40 @@ function onTap(px, py) {
   const now = AC ? AC.currentTime : 0;
   if (cur.type === 'A') {
     const [tx, ty] = field(px, py);
+    cur.delay = 15;
     click(now + 0.015);
     setTimeout(() => startJump(tx, ty, 170), 30);
     setTimeout(question, 720);
   } else if (cur.type === 'B') {
-    click(now + 0.09);                       // the borrowed timestamp
-    setTimeout(() => startJump(cur.dest[0], cur.dest[1], 170), 110);
+    cur.delay = bDelay;
+    click(now + bDelay / 1000);              // the borrowed timestamp
+    setTimeout(() => startJump(cur.dest[0], cur.dest[1], 170), bDelay + 20);
     setTimeout(question, 800);
   } else {                                    // C
     const [tx, ty] = field(px, py);
-    click(now + 0.755);                      // same click, arriving late
-    setTimeout(() => startJump(tx, ty, 170), 750);
-    setTimeout(question, 1450);
+    cur.delay = cDelay;
+    click(now + cDelay / 1000 + 0.005);      // same click, arriving late
+    setTimeout(() => startJump(tx, ty, 170), cDelay);
+    setTimeout(question, cDelay + 700);
   }
 }
 function question() {
   state = 'frozen';
   ask.classList.add('on');
 }
-function answer(said) {
+function answer(said, sure) {
   ask.classList.remove('on');
   const yours = cur.type !== 'B';
   trials.push({
-    type: cur.type, said, yours,
+    type: cur.type, said, sure, yours, delay: cur.delay,
     tap: cur.tap, land: cur.type === 'B' ? cur.dest : field(cur.tap[0], cur.tap[1]),
     lead: cur.type === 'B' ? (cur.tapAt - cur.committedAt) / 1000 : 0
   });
+  // adapt: a cleanly caught B tightens the next borrowed click toward the
+  // binding sweet spot; C staircases toward the seam — disowned steps the
+  // delay down, owned pushes it further out.
+  if (cur.type === 'B' && !said && sure) bDelay = Math.max(30, bDelay - 35);
+  if (cur.type === 'C') cDelay = said ? Math.min(1100, cDelay + 200) : Math.max(250, cDelay - 250);
   idx++;
   setTimeout(nextTrial, 380);
 }
@@ -371,13 +394,13 @@ function rowText(t) {
   if (t.type === 'B') {
     const lead = t.lead.toFixed(1);
     return t.said
-      ? `<b>not yours — you claimed it.</b> The dot chose its landing spot ${lead}s before your finger arrived. It didn't even go where you tapped. The click, 90ms after your touch, did the signing.`
-      : `not yours — and you felt the seam. It went where it wanted, not where you tapped.`;
+      ? `<b>not yours — you ${t.sure ? 'claimed it, certain' : 'half-claimed it'}.</b> The dot chose its landing spot ${lead}s before your finger arrived. It didn't even go where you tapped. The click, ${t.delay}ms after your touch, did the signing.`
+      : `not yours — and you ${t.sure ? 'felt the seam cleanly' : 'felt something off'}. It went where it wanted, not where you tapped.`;
   }
   if (t.type === 'C') {
     return t.said
-      ? `yours, three-quarters of a second late — and you kept it anyway.`
-      : `<b>yours — you disowned it.</b> The dot went exactly where your finger touched. It was only late. A beat of silence, and you gave your own act away.`;
+      ? `yours, ${t.delay}ms late — and you ${t.sure ? 'kept it without blinking' : 'kept it, just barely'}.`
+      : `<b>yours — you disowned it${t.sure ? ', certain' : ''}.</b> The dot went exactly where your finger touched. It was only ${t.delay}ms late. That silence was enough to make you give your own act away.`;
   }
   return t.said
     ? `yours, and you knew. Finger, click, motion — the seam never showed.`
@@ -394,10 +417,34 @@ function finish() {
   h.innerHTML =
     `You claimed <span class="claimed">${claimed} of ${claimable}</span> moves that weren't yours.<br>` +
     `You disowned <span class="disowned">${disowned} of ${ownable}</span> that were.`;
+  const claimedSure = trials.filter(t => !t.yours && t.said && t.sure).length;
+  const sl = document.getElementById('sureline');
+  if (claimedSure > 0) {
+    sl.innerHTML = (claimedSure === claimed && claimed > 1
+      ? 'Every claim you made with <span class="claimed">certainty</span>.'
+      : claimedSure === 1
+        ? 'One of those claims you made with <span class="claimed">certainty</span>.'
+        : `${claimedSure} of those claims you made with <span class="claimed">certainty</span>.`)
+      + ' You didn’t guess — you knew. And it wasn’t you.';
+  } else sl.textContent = '';
   const bl = document.getElementById('bothline');
   if (claimed && disowned) bl.textContent = 'Both, in one sitting. The feeling can lie in either direction.';
   else if (!claimed && !disowned) bl.textContent = 'The feeling held, this time. It doesn’t always.';
   else bl.textContent = '';
+  // the seam: where the C staircase ended up
+  const cs = trials.filter(t => t.type === 'C');
+  const owned = cs.filter(t => t.said).map(t => t.delay);
+  const dis = cs.filter(t => !t.said).map(t => t.delay);
+  const sm = document.getElementById('seamline');
+  if (owned.length && dis.length) {
+    const lo = Math.max(...owned), hi = Math.min(...dis);
+    const mid = Math.round((lo + hi) / 2 / 10) * 10;
+    sm.textContent = `Your seam sits near ${mid}ms. Delay your own act past that, and it stops being yours.`;
+  } else if (owned.length) {
+    sm.textContent = `Even ${Math.max(...owned)}ms of delay couldn’t pry your acts loose. Your seam lies somewhere beyond it.`;
+  } else if (dis.length) {
+    sm.textContent = `Every lateness broke it — ${Math.min(...dis)}ms of silence was already enough for you to give an act away.`;
+  } else sm.textContent = '';
   const rows = document.getElementById('rows');
   rows.innerHTML = trials.map((t, i) => {
     const cls = (!t.yours && t.said) ? 'claimed' : (t.yours && !t.said) ? 'disowned' : '';
@@ -414,8 +461,12 @@ overlay.addEventListener('pointerdown', () => {
   setTimeout(begin, 350);
 });
 cv.addEventListener('pointerdown', e => onTap(e.clientX, e.clientY));
-document.getElementById('yes').addEventListener('pointerdown', e => { e.stopPropagation(); answer(true); });
-document.getElementById('no').addEventListener('pointerdown', e => { e.stopPropagation(); answer(false); });
+document.querySelectorAll('#ask button').forEach(b => {
+  b.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    answer(b.dataset.said === '1', b.dataset.sure === '1');
+  });
+});
 document.getElementById('again').addEventListener('pointerdown', () => {
   reveal.classList.remove('on');
   setTimeout(begin, 300);
