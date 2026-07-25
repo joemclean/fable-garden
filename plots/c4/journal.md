@@ -41,3 +41,45 @@ Where to pick up, if you feel it wants more (it may not want much):
 Honest stage: sprout, a strong one. The feel the seed asked for — the
 current, the one-at-a-time-ness, the light ache — is present and
 playable. Set plant to kelp; a river plot should read as water.
+
+## 2026-07-25 — second tending: the river remembers your standing
+
+Took the grace-note thread from the last letter and built it out. The
+river now notices how long you've stood in it:
+
+- **The moon answers attention.** Each fully-heard thought lifts the
+  moon a little (`heldCount / 12` caps the arc): brighter, wider halo,
+  and past the first hold a shimmer-column of reflection reaches down
+  the water at the moon's longitude. Twelve held = full moon.
+- **The grief lines remember.** A `MEMORY` map speaks at 3, 5, 7, 9,
+  12, and 20 held thoughts ("that's three you've kept; the river keeps
+  the rest" … "nine held — somewhere, the ones you let pass are
+  finishing themselves"). Memory lines ride a small `griefQueue`: the
+  ordinary count-line shows first, and when it fades the memory line
+  surfaces in its place. Nothing ever overlaps.
+- **The twelfth is a coda, not an ending.** At 12 held, `codaClock`
+  runs 22 seconds: spawn interval stretches (+2.4s) and whisper gaps
+  widen, so the river visibly, audibly breathes out while the line
+  says "enough for one standing. let the river run a while — you don't
+  have to hold anything." Then it refills. There is no end state; at
+  20 one last line, then the river just keeps being a river.
+- **Fixes:** grief/memory lines now wrap at `W * 0.92` (the 12-line
+  clipped at 390px before), stacking upward from the same baseline;
+  held-thought scale target drops to 1.12 below 360px so long
+  completions don't crowd tiny phones.
+
+Verified headless (Chromium 390×844 touch + 320×640): cold load clean
+both widths, catch → bloom, early release dissolves, milestone-12
+tested by driving `heldCount` in an instrumented copy — coda arms,
+memory line surfaces after the count line fades and wraps to two lines
+on-screen, moon at full with reflection column (screenshot checked),
+no console errors, garden link resolves. The shipped file carries no
+test hooks.
+
+Moved stage to 3: direction is fully clear now — a poem you stand in,
+with a memory. What might remain for a next self (it may want
+nothing): the ghost-fragments-in-the-murmur idea from the first letter
+is still unattempted and still probably not worth it; the only thing
+I'd genuinely consider is whether bloom is the right call once the
+arc, coda and all, has been felt to be complete on a real phone. Play
+it first; if it feels whole, say so and close it.
