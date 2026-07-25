@@ -200,16 +200,19 @@ function tone(freq, t0, dur, panv, vol, type, glideTo){
   o.connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
 }
 const MOTIFS = {
-  moon(panv){ const t = AC.currentTime;             // slow falling sigh
-    tone(196, t, 0.55, panv, 0.16, 'sine', 147); },
+  moon(panv){ const t = AC.currentTime;             // slow dark falling sigh
+    tone(175, t, 0.9, panv, 0.15, 'sine', 110);
+    tone(350, t, 0.7, panv, 0.04, 'sine', 220);
+    tone(87.5, t+0.05, 0.85, panv, 0.07, 'sine', 55); },
   key(panv){ const t = AC.currentTime;              // quick metal ticks
     tone(1245, t, 0.06, panv, 0.09, 'triangle');
     tone(988,  t+0.1, 0.06, panv, 0.09, 'triangle');
     tone(1245, t+0.2, 0.09, panv, 0.09, 'triangle'); },
-  ring(panv){ const t = AC.currentTime;             // a bell, swelling
-    tone(660, t, 0.8, panv, 0.13);
-    tone(1320, t, 0.6, panv, 0.05);
-    tone(1980, t, 0.35, panv, 0.025); },
+  ring(panv){ const t = AC.currentTime;             // struck bell, beating shimmer
+    tone(660, t, 1.1, panv, 0.14);
+    tone(668, t, 1.0, panv, 0.06);
+    tone(1320, t, 0.7, panv, 0.05);
+    tone(1782, t, 0.4, panv, 0.03); },
   fish(panv){ if(!AC) return;                       // wobbling burble
     const t = AC.currentTime;
     const o = AC.createOscillator(), g = chan(panv);
@@ -229,6 +232,8 @@ function sndTick(){ if(AC) tone(880, AC.currentTime, 0.05, 0, 0.05); }
 function sndClick(panv){ if(AC) tone(1400, AC.currentTime, 0.03, panv, 0.06); }
 function sndAgree(){ if(!AC) return; const t = AC.currentTime;
   tone(523, t, 0.35, 0, 0.07); tone(659, t, 0.35, 0, 0.06); }
+function sndAssert(){ if(!AC) return; const t = AC.currentTime; // the speaker, sure of itself
+  tone(659, t, 0.09, 1, 0.06); tone(880, t+0.1, 0.14, 1, 0.07); }
 function sndSplit(){ if(!AC) return; const t = AC.currentTime; // one note per ear
   tone(523, t, 0.5, -1, 0.08); tone(622, t, 0.5, 1, 0.08); }
 function sndSnip(){ if(!AC) return; const t = AC.currentTime;
@@ -444,10 +449,22 @@ function verdictText(r, aL, aR){
       (gOK ? ', blind, got it right.' : ' said ' + aL + '.') + ' Humbling all round.';
   }
 }
+function confabText(r, aR){
+  const heard = r.kind === 'hear';
+  const lines = heard ? [
+    'The ' + aR + '. I heard it perfectly well.',
+    'That was the ' + aR + ' — no question. My ears don’t lie.',
+    'The ' + aR + '. Clear as a voice in the dark.'
+  ] : [
+    'The ' + aR + '. Obviously. I remember it clearly.',
+    'That was the ' + aR + ' — no question. I’d know it anywhere.',
+    'The ' + aR + '. I’m certain. Who else would know, if not me?'
+  ];
+  return lines[Math.floor(Math.random()*lines.length)];
+}
 function showVerdict(){
-  S.phase = 'verdict';
   const r = S.rounds[S.i], aL = S.ansL, aR = S.ansR;
-  if(aL !== aR) { S.stats.split++; sndSplit(); } else sndAgree();
+  if(aL !== aR) S.stats.split++;
   if(r.kind === 'both' && aL === r.truthL && aR === r.truthR) S.stats.bothRight++;
   if(r.kind !== 'both'){
     const t = r.side === 'L' ? r.truthL : r.truthR;
@@ -456,6 +473,22 @@ function showVerdict(){
   }
   ansLEl.classList.remove('show'); ansREl.classList.remove('show');
   promptL.classList.remove('show');
+  /* when the stimulus was on the left, the speaker answered blind —
+     first it states its guess as plain fact, then the record arrives */
+  if(r.kind !== 'both' && r.side === 'L'){
+    S.phase = 'confab';
+    const my = S.seq;
+    promptR.textContent = confabText(r, aR);
+    sndAssert();
+    setTimeout(() => {
+      if(my !== S.seq || S.phase !== 'confab') return;
+      landVerdict(r, aL, aR);
+    }, 1500);
+  } else landVerdict(r, aL, aR);
+}
+function landVerdict(r, aL, aR){
+  S.phase = 'verdict';
+  if(aL !== aR) sndSplit(); else sndAgree();
   promptR.textContent = verdictText(r, aL, aR);
   /* the mute half reports in shapes: what its side was given, what it said */
   $('vlTruth').innerHTML = svgOf(r.truthL || 'nothing');
