@@ -59,6 +59,11 @@ const stars = [];            // moments of trust, earned in the half-light; they
 const echoes = [];           // rings left behind when the shy one flees
 let constellationDone = false;
 const STAR_GOAL = 7;
+/* the reveal: at the seventh trust the stars drift home, one by one, and the
+   figure they draw is the shy one itself — you were drawing its portrait all along */
+const MOTH = [[-0.30,-0.10],[-0.09,-0.19],[0,-0.24],[0.09,-0.19],[0.30,-0.10],[0.10,0.10],[-0.10,0.10]];
+const GATHER = [523.3, 587.3, 659.3, 784, 880, 1046.5, 1174.7];
+let reveal = null;
 for (const s of sources) s.lit = 0;
 
 function px(nx) { return nx * W; }
@@ -300,6 +305,13 @@ function updateShy(dt, now) {
     if (stars.length < STAR_GOAL) stars.push({ x: shy.x, y: shy.y, born: now });
     if (stars.length >= STAR_GOAL && !constellationDone) {
       constellationDone = true;
+      const m = Math.min(W, H);
+      stars.forEach((st, i) => {
+        st.ox = st.x; st.oy = st.y;
+        st.hx = 0.5 + MOTH[i][0] * m / W;
+        st.hy = 0.30 + MOTH[i][1] * m / H;
+      });
+      reveal = { t0: now };
       if (AC && sfx.constellation) setTimeout(() => sfx.constellation(0.5), 1400);
     }
     shy.trust = -6;                       // it needs a while before it can be won again
@@ -435,7 +447,8 @@ function drawShy(t) {
   } else if (shy.lit > 0.06) {
     /* the half-light: still singing, and just barely visible —
        wings moving, warming as its trust grows */
-    const warm = Math.max(0, Math.min(1, shy.trust / 3.5));
+    /* once the portrait hangs in the sky, it meets the half-light gold — it knows you */
+    const warm = Math.max(constellationDone ? 0.75 : 0, Math.min(1, shy.trust / 3.5));
     const flap = Math.sin(t * 9) * 0.35;
     g2d.globalAlpha = 0.15 + shy.lit * 0.6 + warm * 0.2;
     g2d.fillStyle = warm > 0.6 ? '#f4ecc8' : '#c9d4f4';
@@ -454,15 +467,44 @@ function drawShy(t) {
 }
 
 function drawStars(t) {
-  if (constellationDone && stars.length > 1) {
-    /* seven trusts: the moments join into one faint figure */
-    g2d.strokeStyle = 'rgba(220,230,255,0.16)'; g2d.lineWidth = 1;
-    g2d.beginPath();
-    stars.forEach((st, i) => {
-      const x = px(st.x), y = py(st.y);
-      i === 0 ? g2d.moveTo(x, y) : g2d.lineTo(x, y);
-    });
-    g2d.stroke();
+  const nowMs = performance.now();
+  if (reveal) {
+    /* one by one, the earned moments leave where they happened and gather */
+    for (let i = 0; i < stars.length; i++) {
+      const st = stars[i];
+      const lt = (nowMs - reveal.t0) / 1000 - 1.6 - i * 0.45;
+      if (lt <= 0) continue;
+      if (!st.noted) { st.noted = true; if (AC && sfx.phrase) sfx.phrase(st.hx, [GATHER[i]], 0.05, 0.3); }
+      const p = Math.min(1, lt / 2.8), e = p * p * (3 - 2 * p);
+      st.x = st.ox + (st.hx - st.ox) * e;
+      st.y = st.oy + (st.hy - st.oy) * e;
+    }
+    const settled = (nowMs - reveal.t0) / 1000 - 1.6 - (stars.length - 1) * 0.45 - 2.8;
+    if (settled > 0 && stars.length > 1) {
+      /* the lines close the figure in order — and then, faintly, the moth
+         itself breathes inside it */
+      g2d.lineWidth = 1;
+      for (let i = 0; i < stars.length; i++) {
+        const a = Math.min(1, Math.max(0, (settled - i * 0.5) / 0.8)) * 0.18;
+        if (a <= 0) break;
+        const s1 = stars[i], s2 = stars[(i + 1) % stars.length];
+        g2d.strokeStyle = `rgba(220,230,255,${a})`;
+        g2d.beginPath(); g2d.moveTo(px(s1.x), py(s1.y)); g2d.lineTo(px(s2.x), py(s2.y)); g2d.stroke();
+      }
+      const ga = Math.min(1, Math.max(0, (settled - stars.length * 0.5 - 0.6) / 4)) * 0.06;
+      if (ga > 0) {
+        const m = Math.min(W, H), k = m * 0.02;
+        const cx = 0.5 * W, cy = 0.30 * H - 0.06 * m;
+        const flap = Math.sin(t * 1.2) * 0.12;
+        g2d.globalAlpha = ga;
+        g2d.fillStyle = '#dfe8ff';
+        g2d.beginPath(); g2d.ellipse(cx - 6 * k, cy, 7 * k, 4 * k, -0.5 - flap, 0, 7); g2d.fill();
+        g2d.beginPath(); g2d.ellipse(cx + 6 * k, cy, 7 * k, 4 * k, 0.5 + flap, 0, 7); g2d.fill();
+        g2d.fillStyle = '#9fb2e8';
+        g2d.fillRect(cx - 1.5 * k, cy - 5 * k, 3 * k, 12 * k);
+        g2d.globalAlpha = 1;
+      }
+    }
   }
   for (let i = 0; i < stars.length; i++) {
     const st = stars[i];
@@ -538,5 +580,5 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 /* headless-test handle; harmless in the wild */
-window.__nb = { beam, shy, sources, stars, echoes, gains, litAt };
+window.__nb = { beam, shy, sources, stars, echoes, gains, litAt, reveal: () => reveal };
 </script>
