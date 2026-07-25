@@ -38,11 +38,22 @@
   }
   #say.on { opacity: 1; }
   #home {
-    position: fixed; bottom: .9em; left: 0; right: 0; z-index: 6;
+    position: fixed; bottom: .9em; left: 0; right: 0; z-index: 9;
     text-align: center; font-size: .8em;
   }
   #home a { color: #565c72; text-decoration: none; font-style: italic; letter-spacing: .08em; }
   #home a:hover { color: #9aa0b4; }
+  #coda {
+    position: fixed; inset: 0; z-index: 8;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 2em; box-sizing: border-box;
+    background: rgba(10,13,22,0.72);
+    opacity: 0; pointer-events: none; transition: opacity 1.4s ease;
+  }
+  #coda.on { opacity: 1; pointer-events: auto; }
+  #coda p { font-style: italic; line-height: 1.8; max-width: 22em; margin: .3em 0; color: #b9bfd2; font-size: 1.05em; }
+  #coda p.dim { color: #6d7388; font-size: .92em; }
+  #coda p.go { margin-top: 2.4em; font-size: .9em; color: #9aa0b4; animation: breathe 3s ease-in-out infinite; }
 </style>
 </head>
 <body>
@@ -57,6 +68,12 @@
   <p class="go">touch to look</p>
 </div>
 <div id="home"><a href="../../../viewer/">&larr; the rest of the garden</a></div>
+<div id="coda">
+  <p id="coda1"></p>
+  <p id="coda2"></p>
+  <p class="dim" id="coda3"></p>
+  <p class="go">touch to keep looking</p>
+</div>
 
 <script>
 'use strict';
@@ -214,7 +231,9 @@ const game = {
   frame: 0, sub: 'show', until: 0, flips: 0, misses: 0,
   marks: [], stars: makeStars(), cueText: '', revealAt: 0,
   showDur: 800, lastTap: null, decoy: null, gazeBiased: false,
+  totalChanges: 0,
 };
+const CODA_EVERY = 12;
 
 function pickChangeType() {
   const r = game.round;
@@ -264,7 +283,8 @@ function newRound() {
     } else if (type === 'color') {
       target.hue = (target.hue + Math.max(110 - lvl * 7, 40)) % 360;
     } else if (type === 'size') {
-      target.r *= (lvl < 6 ? 1.65 : 1.35);
+      /* growing draws the eye; shrinking is meaner — half and half */
+      target.r *= Math.random() < 0.5 ? (lvl < 6 ? 1.65 : 1.35) : (lvl < 6 ? 0.55 : 0.7);
     } else if (type === 'retune') {
       target.freq *= (Math.random() < 0.5 ? 1.414 : 0); /* a tritone off the scale, or silence */
       if (target.freq === 0) { target.freq = A.find(o => o.id === target.id).freq; target.mute = true; }
@@ -334,8 +354,43 @@ function endRound(hit) {
         MISS_REMARKS[Math.floor(Math.random() * MISS_REMARKS.length)](game.flips));
   }
   game.round++;
+  game.totalChanges += game.flips;
   tally();
-  setTimeout(newRound, 3600);
+  setTimeout(() => {
+    if (game.round > 0 && game.round % CODA_EVERY === 0) startCoda();
+    else newRound();
+  }, 3600);
+}
+function codaChord() {
+  if (!ac) return;
+  const t = ac.currentTime;
+  [396, 330, 264].forEach((f, i) => {
+    const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t + i * 0.5);
+    g.gain.exponentialRampToValueAtTime(0.09, t + i * 0.5 + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.5 + 3.2);
+    o.connect(g); g.connect(master);
+    o.start(t + i * 0.5); o.stop(t + i * 0.5 + 3.4);
+  });
+}
+function startCoda() {
+  game.state = 'coda';
+  clearVoices();
+  say('');
+  codaChord();
+  const skies = game.round, seen = game.found, all = game.totalChanges;
+  document.getElementById('coda1').textContent =
+    `${skies} skies. you noticed ${seen}.`;
+  document.getElementById('coda2').textContent = all > 0 ?
+    `the world changed ${all} times while you watched.` :
+    'you caught each one before it could repeat.';
+  document.getElementById('coda3').textContent =
+    all === 0 ? 'that never happens. are you sure you’re a pair of eyes?' :
+    seen >= skies * 0.7 ? 'sharp, for a pair of eyes. the rest slid by anyway.' :
+    'most of it slid by. it always does — it just usually goes unnoticed.';
+  document.getElementById('coda').classList.add('on');
+  tally();
 }
 function tally() {
   tallyEl.textContent = game.round === 0 && game.found === 0 ? '' :
@@ -362,6 +417,13 @@ window.addEventListener('pointerdown', (e) => {
     veil.classList.add('gone');
     setTimeout(newRound, 600);
     game.state = 'starting';
+    return;
+  }
+  if (game.state === 'coda') {
+    if (e.clientY > H * 0.92) return; /* the way home stays a way home */
+    document.getElementById('coda').classList.remove('on');
+    game.state = 'starting';
+    setTimeout(newRound, 700);
     return;
   }
   if (game.state !== 'flicker' || game.sub !== 'show') return;
