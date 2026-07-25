@@ -1,0 +1,621 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>The River</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #050a14;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #title {
+    position: fixed; top: 22%; left: 0; right: 0; text-align: center;
+    pointer-events: none; transition: opacity 2.4s ease;
+    color: #cfe0f0; font-family: Georgia, 'Times New Roman', serif;
+  }
+  #title h1 { font-size: 34px; font-weight: normal; letter-spacing: 0.14em; margin: 0 0 14px 0; opacity: 0.92; }
+  #title p  { font-size: 15px; font-style: italic; margin: 0; opacity: 0.55; letter-spacing: 0.04em; }
+  #title.gone { opacity: 0; }
+  #garden {
+    position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 14px; z-index: 5;
+    color: #8fa8c4; opacity: 0.34; text-decoration: none;
+    font-family: Georgia, serif; font-style: italic; font-size: 13px;
+    padding: 6px 8px;
+  }
+  #garden:active, #garden:hover { opacity: 0.8; }
+  #mute {
+    position: fixed; top: calc(6px + env(safe-area-inset-top)); right: 10px; z-index: 5;
+    background: none; border: none; color: #8fa8c4; opacity: 0.34;
+    font-size: 17px; padding: 8px 10px; cursor: pointer;
+  }
+  #mute:active, #mute:hover { opacity: 0.8; }
+</style>
+
+<canvas id="c"></canvas>
+<div id="title"><h1>The&nbsp;River</h1><p>touch a thought to hold it</p></div>
+<a id="garden" href="../../../viewer/">⟵ the garden</a>
+<button id="mute" aria-label="sound">◉</button>
+
+<script>
+'use strict';
+
+/* ================= the water of the river: the thoughts ================= */
+/* Each thought drifts half-formed. Held long enough, it completes itself. */
+const POOL = [
+  ["the smell of rain on hot pavement", "and being eight, and nobody calling me in yet"],
+  ["I should call her back", "— I keep saying that, and the days close over it like water"],
+  ["that song from the kitchen radio", "my father hummed it badly, and now so do I"],
+  ["the word I wanted", "was gone before I turned to write it down"],
+  ["a door closing somewhere upstairs", "in a house that was sold years ago"],
+  ["her handwriting on the grocery list", "still magneted to a fridge that isn't ours anymore"],
+  ["the dog's ears in the wind", "out the car window, the whole world worth smelling"],
+  ["maybe I left the stove on", "— no, that fear just likes the shape of me"],
+  ["the lake before anyone wakes", "holding the sky so gently it forgets to ripple"],
+  ["what my grandmother said about bread", "that patience is an ingredient — I wasn't listening then"],
+  ["the blue of that one evening", "I've checked every sky since; it hasn't come back"],
+  ["a name I almost remember", "attached to a laugh I remember perfectly"],
+  ["snow falling into the river", "arriving and belonging and gone, all in one motion"],
+  ["the ticket stub in my coat pocket", "from a night I'd forgotten being happy in"],
+  ["I was rude to someone kind once", "years ago — apparently I'm keeping it forever"],
+  ["the sound of the sewing machine", "through the floor, stitching the dark shut behind me"],
+  ["if I'd taken the other road", "someone else would be missing this exact life"],
+  ["light through a jar of honey", "on a windowsill I could still find blindfolded"],
+  ["the last time we all sat together", "we didn't know it was the last time — that's how they go"],
+  ["a phone number I know by heart", "for a house where no one answers anymore"],
+  ["the way he said “anyway”", "like a hinge between what hurt and what came next"],
+  ["whatever happened to that friend", "we never fought; we just let the current take it"],
+  ["the gap in the fence", "we climbed through, when shortcuts still felt like secrets"],
+  ["a moth against the window", "wanting the lamp the way I want things I shouldn't"],
+  ["the exact weight of a sleeping cat", "on my chest, forgiving me for the whole day"],
+  ["I never thanked that teacher", "who told me my sentences could be doors"],
+  ["the ferry pulling out", "and the water widening like a thing being decided"],
+  ["tomorrow I'll start over", "— the sweetest lie I tell myself, and it keeps me"],
+  ["my father's hands on the wheel", "ten and two, the radio low, everything safe for an hour"],
+  ["the smell of the school gym", "varnish and rain — entire years live in it"],
+  ["a language I half learned", "still surfacing in dreams, fluent where I can't follow"],
+  ["the streetlight coming on", "which meant come home, which meant someone was waiting"],
+  ["what the nurse said quietly", "that small kindness at the door of the worst news"],
+  ["peaches in a paper bag", "ripening on the counter of an August that ended"],
+  ["I almost said it, that night", "— the almost is the part I still carry"],
+  ["rain starting on a tin roof", "tuning itself from noise into a lullaby"],
+  ["the map folded wrong", "and being lost together, which was its own place"],
+  ["my old bedroom ceiling", "every crack of it — the first sky I ever studied"],
+  ["a stranger's laugh across the water", "so like hers that the whole evening turned around"],
+  ["the library's yellow lamplight", "and being small among the tall shelves, rich forever"],
+  ["one more minute, then I'll get up", "— the warm arithmetic that never adds the same way twice"],
+  ["the tide going out", "taking the sandcastle politely, as if asking permission"],
+  ["his voice on the old voicemail", "I don't play it; it's enough that it's kept"],
+  ["the coat left on the hook", "still deciding whether to be sad or to be her"],
+  ["fireflies in the tall grass", "switching on like the field was having thoughts"],
+  ["the last page of that book", "read slowly, to keep its people alive one more hour"],
+  ["a train at night, far off", "promising that elsewhere is real, and reachable"],
+  ["what I meant to say at the funeral", "arrived a week late, in the car, at a red light"],
+  ["the first cold apple of autumn", "loud as a snapped branch, sweet as being young"],
+  ["the kettle beginning to sing", "in the next room, meaning someone is up, meaning morning"],
+];
+
+const NUM_WORDS = ["nothing","one thought","two thoughts","three thoughts","four thoughts",
+  "five thoughts","six thoughts","seven thoughts","eight thoughts","nine thoughts",
+  "ten thoughts","eleven thoughts","twelve thoughts"];
+
+/* ================= canvas ================= */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ================= audio: the murmur ================= */
+let AC = null, master = null, murmurBus = null, voiceBus = null;
+let muted = false, audioOn = false;
+let droneOscs = [];
+const SCALE = [220, 261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
+
+function startAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); }
+  catch (e) { return; }
+  master = AC.createGain(); master.gain.value = muted ? 0 : 0.9;
+  master.connect(AC.destination);
+  murmurBus = AC.createGain(); murmurBus.gain.value = 0.9; murmurBus.connect(master);
+  voiceBus = AC.createGain(); voiceBus.gain.value = 1.0; voiceBus.connect(master);
+
+  // water: slow-breathing filtered noise, two layers panned apart
+  const nbuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
+  const nd = nbuf.getChannelData(0);
+  for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  [[-0.4, 420, 0.05], [0.4, 640, 0.09]].forEach(([pan, freq, rate]) => {
+    const src = AC.createBufferSource(); src.buffer = nbuf; src.loop = true;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 0.8;
+    const lfo = AC.createOscillator(); lfo.frequency.value = rate;
+    const lfoG = AC.createGain(); lfoG.gain.value = freq * 0.55;
+    lfo.connect(lfoG); lfoG.connect(bp.frequency); lfo.start();
+    const g = AC.createGain(); g.gain.value = 0.055;
+    const p = AC.createStereoPanner ? AC.createStereoPanner() : null;
+    src.connect(bp); bp.connect(g);
+    if (p) { p.pan.value = pan; g.connect(p); p.connect(murmurBus); } else g.connect(murmurBus);
+    src.start();
+  });
+  audioOn = true;
+}
+
+// a single voice at the edge of sense — one syllable of the crowd
+function whisper() {
+  if (!AC || muted) return;
+  const t = AC.currentTime;
+  const f0 = SCALE[(Math.random() * SCALE.length) | 0] * (Math.random() < 0.5 ? 0.5 : 1);
+  const o = AC.createOscillator(); o.type = 'sawtooth';
+  o.frequency.value = f0 * (1 + (Math.random() - 0.5) * 0.02);
+  const f1 = AC.createBiquadFilter(); f1.type = 'bandpass';
+  f1.frequency.value = 380 + Math.random() * 400; f1.Q.value = 5;
+  const f2 = AC.createBiquadFilter(); f2.type = 'bandpass';
+  f2.frequency.value = 1100 + Math.random() * 900; f2.Q.value = 6;
+  const g = AC.createGain();
+  const dur = 0.15 + Math.random() * 0.35;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.014 + Math.random() * 0.012, t + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.0004, t + dur);
+  o.connect(f1); f1.connect(f2); f2.connect(g);
+  const p = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  if (p) { p.pan.value = Math.random() * 1.6 - 0.8; g.connect(p); p.connect(murmurBus); }
+  else g.connect(murmurBus);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+
+// the clear voice: one hummed note per word, when a thought is attended
+let noteIx = 2;
+function wordNote() {
+  if (!AC || muted) return;
+  const t = AC.currentTime;
+  noteIx += (Math.random() < 0.62 ? 1 : -1) * ((Math.random() * 2 | 0) + 1);
+  noteIx = Math.max(0, Math.min(SCALE.length - 1, noteIx));
+  const f = SCALE[noteIx];
+  const o = AC.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+  const vib = AC.createOscillator(); vib.frequency.value = 5.4;
+  const vibG = AC.createGain(); vibG.gain.value = f * 0.006;
+  vib.connect(vibG); vibG.connect(o.frequency); vib.start(t);
+  const form = AC.createBiquadFilter(); form.type = 'bandpass';
+  form.frequency.value = 780; form.Q.value = 1.4;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+  const g = AC.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.11, t + 0.06);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.75);
+  o.connect(form); form.connect(lp); lp.connect(g); g.connect(voiceBus);
+  o.start(t); o.stop(t + 0.85); vib.stop(t + 0.85);
+}
+
+function startDrone() {
+  if (!AC || muted) return;
+  stopDrone(true);
+  const t = AC.currentTime;
+  [110, 164.81].forEach(f => {
+    const o = AC.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.032, t + 1.2);
+    o.connect(g); g.connect(voiceBus); o.start(t);
+    droneOscs.push({ o, g });
+  });
+  murmurBus.gain.cancelScheduledValues(t);
+  murmurBus.gain.linearRampToValueAtTime(0.42, t + 0.6);
+}
+function stopDrone(hard) {
+  if (!AC) return;
+  const t = AC.currentTime;
+  droneOscs.forEach(({ o, g }) => {
+    g.gain.cancelScheduledValues(t);
+    if (hard) { g.gain.value = 0; try { o.stop(t); } catch (e) {} }
+    else { g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.8); try { o.stop(t + 0.9); } catch (e) {} }
+  });
+  droneOscs = [];
+  murmurBus.gain.cancelScheduledValues(t);
+  murmurBus.gain.setValueAtTime(murmurBus.gain.value, t);
+  murmurBus.gain.linearRampToValueAtTime(0.9, t + 1.0);
+}
+function bloomChord() {
+  if (!AC || muted) return;
+  const t = AC.currentTime;
+  [SCALE[2], SCALE[4], SCALE[6]].forEach((f, i) => {
+    const o = AC.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const g = AC.createGain();
+    const t0 = t + i * 0.09;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.07, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 1.4);
+    o.connect(g); g.connect(voiceBus); o.start(t0); o.stop(t0 + 1.5);
+  });
+  const o = AC.createOscillator(); o.type = 'sine'; o.frequency.value = 1567.98;
+  const g = AC.createGain();
+  g.gain.setValueAtTime(0, t + 0.25);
+  g.gain.linearRampToValueAtTime(0.035, t + 0.32);
+  g.gain.exponentialRampToValueAtTime(0.0005, t + 2.2);
+  o.connect(g); g.connect(voiceBus); o.start(t + 0.25); o.stop(t + 2.3);
+}
+function sighNote() { // early release: a small falling note
+  if (!AC || muted) return;
+  const t = AC.currentTime;
+  const o = AC.createOscillator(); o.type = 'triangle';
+  o.frequency.setValueAtTime(SCALE[Math.max(0, noteIx)], t);
+  o.frequency.exponentialRampToValueAtTime(SCALE[0] * 0.75, t + 0.55);
+  const g = AC.createGain();
+  g.gain.setValueAtTime(0.06, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+  o.connect(g); g.connect(voiceBus); o.start(t); o.stop(t + 0.7);
+}
+
+const muteBtn = document.getElementById('mute');
+muteBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  muted = !muted;
+  muteBtn.textContent = muted ? '◌' : '◉';
+  if (AC && master) master.gain.linearRampToValueAtTime(muted ? 0 : 0.9, AC.currentTime + 0.2);
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!AC) return;
+  if (document.hidden) AC.suspend(); else if (!muted) AC.resume();
+});
+
+/* ================= the stream ================= */
+const FONT = 'Georgia, "Times New Roman", serif';
+let deck = [], deckIx = 0;
+function shuffleDeck() {
+  deck = POOL.map((_, i) => i);
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  deckIx = 0;
+}
+shuffleDeck();
+
+const frags = [];      // thoughts on the water
+const particles = [];  // dissolving letters/light
+const glints = [];     // memory of completed thoughts
+let held = null;
+let holdPt = { x: 0, y: 0 };
+let passedWhileHeld = 0;
+let griefLine = null;  // {text, born}
+let caughtOnce = false;
+
+const LANES = 7;
+function laneY(lane) { return H * (0.16 + 0.62 * (lane / (LANES - 1))); }
+function laneDepth(lane) { return lane / (LANES - 1); } // 0 far … 1 near
+
+function spawnFrag(xOverride, laneOverride) {
+  let lane;
+  if (laneOverride !== undefined) lane = laneOverride;
+  else {
+    // only enter a lane whose right stretch is clear, so thoughts never pile up
+    const free = [];
+    for (let l = 0; l < LANES; l++) {
+      if (!frags.some(f => f.state === 'drift' && f.lane === l && f.x + f.w * 0.5 > W * 0.62)) free.push(l);
+    }
+    if (!free.length) return;
+    lane = free[(Math.random() * free.length) | 0];
+  }
+  if (deckIx >= deck.length) shuffleDeck();
+  const [half, rest] = POOL[deck[deckIx++]];
+  const d = laneDepth(lane);
+  const size = 13 + d * 9;
+  ctx.font = `italic ${size}px ${FONT}`;
+  const text = half + ' …';
+  const w = ctx.measureText(text).width;
+  frags.push({
+    half, rest, restWords: rest.split(' '),
+    revealed: 0, revealClock: 0,
+    lane, x: xOverride !== undefined ? xOverride : W + w * 0.5 + 20, y: laneY(lane),
+    speed: (14 + d * 26) * (0.85 + Math.random() * 0.3),
+    size, w, alpha: 0.28 + d * 0.5,
+    bobPhase: Math.random() * Math.PI * 2,
+    state: 'drift', scale: 1, glow: 0,
+    lingerClock: 0,
+  });
+}
+
+function dissolveFrag(f, bright) {
+  const text = f.state === 'held' ? currentText(f) : f.half + ' …';
+  const n = Math.min(26, 8 + text.length / 3);
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x: f.x + (Math.random() - 0.5) * f.w * f.scale,
+      y: f.y + (Math.random() - 0.5) * 26 * f.scale,
+      vx: -f.speed * 0.6 - Math.random() * 18,
+      vy: (Math.random() - 0.5) * (bright ? 46 : 14) - (bright ? 22 : 0),
+      life: 1, decay: 0.35 + Math.random() * 0.5,
+      r: bright ? 1.2 + Math.random() * 2.2 : 0.8 + Math.random() * 1.4,
+      bright: !!bright,
+    });
+  }
+}
+
+function currentText(f) {
+  let t = f.half;
+  if (f.revealed > 0) t += ' ' + f.restWords.slice(0, f.revealed).join(' ');
+  if (f.revealed < f.restWords.length) t += ' …';
+  return t;
+}
+
+function wrapText(text, size, maxW) {
+  ctx.font = `italic ${size}px ${FONT}`;
+  const words = text.split(' ');
+  const lines = []; let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function grief(n) {
+  const words = n < NUM_WORDS.length ? NUM_WORDS[n] : (n + ' thoughts');
+  return n === 0
+    ? 'the river held its breath for you'
+    : words + ' went by while you held this one';
+}
+
+/* ================= interaction ================= */
+let pointerId = null;
+const titleEl = document.getElementById('title');
+
+function tryCatch(x, y) {
+  let best = null, bestD = 1e9;
+  for (const f of frags) {
+    if (f.state !== 'drift') continue;
+    const dx = Math.max(0, Math.abs(x - f.x) - f.w * 0.5);
+    const dy = Math.abs(y - f.y);
+    const d = Math.hypot(dx, dy);
+    if (dy < 46 && d < 80 && d < bestD) { best = f; bestD = d; }
+  }
+  return best;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  startAudio();
+  if (pointerId !== null) return;
+  pointerId = e.pointerId;
+  const f = tryCatch(e.clientX, e.clientY);
+  holdPt.x = e.clientX; holdPt.y = e.clientY;
+  if (f) {
+    held = f; f.state = 'held'; f.revealClock = 0.15;
+    passedWhileHeld = 0;
+    startDrone();
+    if (!caughtOnce) { caughtOnce = true; titleEl.classList.add('gone'); }
+  } else {
+    // a touch of empty water: a ripple
+    glintSplash(e.clientX, e.clientY);
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== pointerId) return;
+  holdPt.x = e.clientX; holdPt.y = e.clientY;
+});
+function release(early) {
+  pointerId = null;
+  if (!held) return;
+  const f = held; held = null;
+  if (early) {
+    dissolveFrag(f, false);
+    sighNote();
+    stopDrone(false);
+    frags.splice(frags.indexOf(f), 1);
+  }
+}
+canvas.addEventListener('pointerup', (e) => { if (e.pointerId === pointerId) release(true); });
+canvas.addEventListener('pointercancel', (e) => { if (e.pointerId === pointerId) release(true); });
+
+const splashes = [];
+function glintSplash(x, y) { splashes.push({ x, y, r: 4, life: 1 }); }
+
+/* ================= render ================= */
+let last = performance.now();
+let spawnClock = 0.4, whisperClock = 0.5;
+
+// the river was flowing before you arrived
+{
+  const pre = [...Array(LANES).keys()];
+  for (let i = pre.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [pre[i], pre[j]] = [pre[j], pre[i]]; }
+  for (let i = 0; i < 6; i++) spawnFrag(W * (0.12 + 0.18 * i) + Math.random() * W * 0.08, pre[i]);
+}
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+
+  // spawn
+  spawnClock -= dt;
+  const driftCount = frags.filter(f => f.state === 'drift').length;
+  if (spawnClock <= 0 && driftCount < 9) {
+    spawnFrag();
+    spawnClock = 1.5 + Math.random() * 1.3;
+  }
+  // murmur voices
+  if (audioOn && !document.hidden) {
+    whisperClock -= dt;
+    if (whisperClock <= 0) { whisper(); whisperClock = 0.12 + Math.random() * 0.3; }
+  }
+
+  /* --- update --- */
+  for (let i = frags.length - 1; i >= 0; i--) {
+    const f = frags[i];
+    if (f.state === 'drift') {
+      f.x -= f.speed * dt;
+      f.bobPhase += dt * 0.9;
+      f.y = laneY(f.lane) + Math.sin(f.bobPhase) * 4;
+      f.glow = Math.max(0, f.glow - dt * 2);
+      if (f.x + f.w * 0.5 < -60) {
+        frags.splice(i, 1);
+        if (held) passedWhileHeld++;
+      }
+    } else if (f.state === 'held') {
+      // ease into the eddy just above the finger
+      const tx = Math.min(Math.max(holdPt.x, W * 0.5 - (W * 0.86) / 2 + 10), W * 0.5 + (W * 0.86) / 2);
+      const ty = Math.max(70, holdPt.y - 90);
+      f.x += (tx - f.x) * Math.min(1, dt * 6);
+      f.y += (ty - f.y) * Math.min(1, dt * 6);
+      f.scale += (1.3 - f.scale) * Math.min(1, dt * 4);
+      f.alpha += (1 - f.alpha) * Math.min(1, dt * 4);
+      f.glow = Math.min(1, f.glow + dt * 2.5);
+      if (f.revealed < f.restWords.length) {
+        f.revealClock -= dt;
+        if (f.revealClock <= 0) {
+          f.revealed++;
+          wordNote();
+          f.revealClock = 0.5 + Math.random() * 0.12;
+        }
+      } else {
+        f.lingerClock += dt;
+        if (f.lingerClock > 1.5) {
+          // fully heard: it blooms, and is gone
+          dissolveFrag(f, true);
+          bloomChord();
+          stopDrone(false);
+          glints.push({ x: f.x, y: f.y, phase: Math.random() * 6, drift: 6 + Math.random() * 6, settle: 0 });
+          if (glints.length > 34) glints.shift();
+          griefLine = { text: grief(passedWhileHeld), born: now };
+          frags.splice(i, 1);
+          held = null; pointerId = null;
+        }
+      }
+    }
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += (p.bright ? -6 : 10) * dt;
+    p.life -= p.decay * dt;
+    if (p.life <= 0 || p.x < -20) particles.splice(i, 1);
+  }
+  for (const g of glints) {
+    g.phase += dt * 2.2;
+    g.settle = Math.min(1, g.settle + dt * 0.25);
+    const targetY = H * 0.9 + Math.sin(g.phase * 0.4) * 5;
+    g.y += (targetY - g.y) * Math.min(1, dt * 0.5);
+    g.x -= g.drift * dt;
+    if (g.x < 12) g.x = W - 12;
+  }
+  for (let i = splashes.length - 1; i >= 0; i--) {
+    const s = splashes[i];
+    s.r += 36 * dt; s.life -= dt * 1.4;
+    if (s.life <= 0) splashes.splice(i, 1);
+  }
+
+  /* --- draw --- */
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#040812');
+  bg.addColorStop(0.45, '#081222');
+  bg.addColorStop(1, '#0c1e33');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // moon
+  const mg = ctx.createRadialGradient(W * 0.78, H * 0.08, 4, W * 0.78, H * 0.08, 110);
+  mg.addColorStop(0, 'rgba(210,225,240,0.16)');
+  mg.addColorStop(1, 'rgba(210,225,240,0)');
+  ctx.fillStyle = mg;
+  ctx.fillRect(W * 0.78 - 120, H * 0.08 - 120, 240, 240);
+
+  // current lines
+  ctx.lineWidth = 1;
+  const t = now / 1000;
+  for (let i = 0; i < 14; i++) {
+    const yy = H * (0.12 + 0.8 * i / 13);
+    const speed = 14 + (i / 13) * 30;
+    ctx.strokeStyle = `rgba(120,160,200,${0.028 + (i / 13) * 0.03})`;
+    ctx.beginPath();
+    for (let x = -10; x <= W + 10; x += 14) {
+      const y = yy + Math.sin(x * 0.014 + t * speed * 0.045 + i * 2.1) * 2.6
+                   + Math.sin(x * 0.005 - t * speed * 0.02 + i) * 3.4;
+      x === -10 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // splashes
+  for (const s of splashes) {
+    ctx.strokeStyle = `rgba(160,195,225,${0.25 * s.life})`;
+    ctx.beginPath(); ctx.ellipse(s.x, s.y, s.r, s.r * 0.35, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // glints — the held-and-heard, remembered on the water
+  for (const g of glints) {
+    const tw = 0.5 + 0.5 * Math.sin(g.phase * 3);
+    ctx.fillStyle = `rgba(240,235,200,${(0.18 + 0.5 * tw) * g.settle})`;
+    ctx.beginPath(); ctx.arc(g.x, g.y, 1.3 + tw * 1.2, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // drifting thoughts, far lanes first
+  const ordered = frags.slice().sort((a, b) => a.lane - b.lane);
+  for (const f of ordered) {
+    if (f.state === 'held') continue;
+    ctx.font = `italic ${f.size}px ${FONT}`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = `rgba(205,222,240,${f.alpha})`;
+    ctx.fillText(f.half + ' …', f.x, f.y);
+    // faint reflection
+    ctx.fillStyle = `rgba(205,222,240,${f.alpha * 0.12})`;
+    ctx.save();
+    ctx.translate(f.x, f.y + f.size * 1.35); ctx.scale(1, -0.75);
+    ctx.fillText(f.half + ' …', 0, 0);
+    ctx.restore();
+  }
+
+  // the held thought, above everything, clarified
+  if (held) {
+    const f = held;
+    const size = f.size * f.scale;
+    const lines = wrapText(currentText(f), size, Math.min(W * 0.86, 520));
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // eddy glow
+    const eg = ctx.createRadialGradient(f.x, f.y, 6, f.x, f.y, 150);
+    eg.addColorStop(0, `rgba(150,190,230,${0.13 * f.glow})`);
+    eg.addColorStop(1, 'rgba(150,190,230,0)');
+    ctx.fillStyle = eg;
+    ctx.fillRect(f.x - 160, f.y - 160, 320, 320);
+    ctx.font = `italic ${size}px ${FONT}`;
+    const lh = size * 1.35;
+    const y0 = f.y - (lines.length - 1) * lh / 2;
+    lines.forEach((ln, i) => {
+      ctx.shadowColor = 'rgba(190,215,245,0.8)';
+      ctx.shadowBlur = 10 * f.glow;
+      ctx.fillStyle = `rgba(235,244,252,${f.alpha})`;
+      ctx.fillText(ln, f.x, y0 + i * lh);
+      ctx.shadowBlur = 0;
+    });
+  }
+
+  // particles
+  for (const p of particles) {
+    ctx.fillStyle = p.bright
+      ? `rgba(245,240,210,${0.7 * p.life})`
+      : `rgba(200,220,240,${0.5 * p.life})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // grief line
+  if (griefLine) {
+    const age = (now - griefLine.born) / 1000;
+    if (age > 5) griefLine = null;
+    else {
+      const a = age < 0.8 ? age / 0.8 : age > 3.6 ? Math.max(0, 1 - (age - 3.6) / 1.4) : 1;
+      ctx.font = `italic 14px ${FONT}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(170,195,220,${0.55 * a})`;
+      ctx.fillText(griefLine.text, W / 2, H * 0.955);
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
