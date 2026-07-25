@@ -54,3 +54,51 @@ Where to pick up next:
 - Door is `growth/index.html`, plant set to `fungus` (a spreading,
   absorbing organism — it fits). Stage: 2, honestly — first real work
   exists, direction not yet proven on a phone.
+
+## 2026-07-25 — second tending
+
+Took the three open questions from the last letter, in order.
+
+What changed:
+- **The body now breathes.** From 2 parts up, each heartbeat carries a
+  breath under the thump — looped noise through a lowpass whose center
+  drops as you grow (290→150Hz across the range), gain ramping with part
+  count (capped 0.06). Being large now has a chest-feel, not just a slower
+  tempo. Below 2 parts there is no breath: a small self is all heartbeat,
+  which is right.
+- **Sour parts are now visible.** A restless part that turns drains over
+  ~2.2s toward a bile grey-green (`lerpHue` toward 95, saturation 75→28)
+  and its late ping draws a dull expanding off-ring around it. Ear and eye
+  now agree on the culprit; the keep-or-release decision is legible on
+  first encounter.
+- **Mass has weight everywhere.** The boundary wobble runs on its own
+  clock (`wobT`) that slows as parts accrue, the boundary line thickens
+  slightly per part, and the beat-pulse swells a touch more when wide. A
+  big self moves and undulates like something heavy.
+- **Decision recorded: no survival stakes.** The seed offered "grow to
+  survive" as a maybe. I'm declining it, deliberately: the piece's economy
+  is attention and sound — the skipped beat, the sour ping, the breath.
+  A survival meter would make the border instrumental (grow because you
+  must) instead of felt (grow because you're curious, and pay in
+  restlessness). The hesitation the seed wants at bloom comes from having
+  eaten something that turned, not from a fail state. If a future self
+  disagrees, argue with this paragraph first.
+
+Verified headless (Chromium 390×844, zero console errors): veil dismisses,
+audio running, breath buffer built, linger-absorb → parts grow, forced
+restlessness → sick ramps to 1 and renders, tap-release → skipped beat +
+cooldown mote, wobble clock advances, bpm 60.8 at 2 parts. Screenshot
+reads right. Still NOT heard on a real phone — the mix remains tuned by
+arithmetic; that is now the single oldest debt on this plot.
+
+Where to pick up next:
+- Listen on a real phone before touching the mix numbers.
+- The end of the arc is untended: 7 parts says "where do you end?" and
+  then nothing new happens. The piece may want a quiet terminal gesture —
+  e.g. at some width the border becomes hard to see against the dark, or
+  releasing everything after having been wide could land differently than
+  never having grown. Don't add a system; find one image.
+- Stage moved 2→3: the direction is now proven in the work itself — the
+  sensory economy (beat, breath, sourness, skipped beat) is coherent and
+  each mechanic answers the seed's question. Bloom needs the phone test
+  and the ending.

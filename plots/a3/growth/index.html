@@ -85,7 +85,7 @@ function spawnMote(fromX, fromY, vx, vy, inherit){
 for (let i=0;i<8;i++) spawnMote();
 
 /* ---------- audio ---------- */
-let ctx = null, master = null, started = false;
+let ctx = null, master = null, started = false, breathBuf = null;
 let nextBeat = 0, skipBeats = 0, lastVisBeat = -9;
 function bpm(){
   let b = 66 - 2.6 * self_.parts.length;
@@ -97,8 +97,26 @@ function initAudio(){
   comp.threshold.value = -18; comp.ratio.value = 6;
   master = ctx.createGain(); master.gain.value = 0.9;
   master.connect(comp); comp.connect(ctx.destination);
+  const blen = (ctx.sampleRate * 0.6)|0;
+  breathBuf = ctx.createBuffer(1, blen, ctx.sampleRate);
+  const bd = breathBuf.getChannelData(0);
+  for (let i=0;i<blen;i++) bd[i] = Math.random()*2 - 1;
   nextBeat = ctx.currentTime + 0.3;
   setInterval(schedule, 30);
+}
+function breath(t, n){
+  // the chest under the thump — only a body with mass gets one
+  const src = ctx.createBufferSource(); src.buffer = breathBuf; src.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(Math.max(150, 290 - 13*n), t);
+  f.frequency.exponentialRampToValueAtTime(Math.max(90, 170 - 8*n), t + 0.4);
+  const gn = ctx.createGain();
+  const vol = Math.min(0.06, 0.008 + 0.0075*n);
+  gn.gain.setValueAtTime(0.0001, t);
+  gn.gain.exponentialRampToValueAtTime(vol, t + 0.06);
+  gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.44);
+  src.connect(f); f.connect(gn); gn.connect(master);
+  src.start(t); src.stop(t + 0.5);
 }
 function thump(t, f0, f1, vol, dur){
   const o = ctx.createOscillator(), gn = ctx.createGain();
@@ -174,6 +192,7 @@ function playBeat(t){
   lastVisBeat = t;
   thump(t, 82, 46, 0.5, 0.16);                 // lub
   thump(t + 0.24, 66, 40, 0.3, 0.13);          // dub
+  if (self_.parts.length >= 2) breath(t, self_.parts.length);
   const r = selfR();
   for (const p of self_.parts){
     if (p.appear < 0.6) continue;
@@ -275,7 +294,7 @@ function absorb(m){
   motes.splice(motes.indexOf(m), 1);
   const part = {
     pitch: m.pitch, hue: m.hue,
-    restlessTemper: m.restless, restlessNow: false,
+    restlessTemper: m.restless, restlessNow: false, sick: 0,
     settledAt: performance.now(),
     ang: Math.atan2(m.y - self_.y, m.x - self_.x),
     orbR: 0.35 + Math.random()*0.45,
@@ -291,7 +310,11 @@ function absorb(m){
 }
 
 /* ---------- simulation ---------- */
-let last = performance.now();
+let last = performance.now(), wobT = 0;
+function lerpHue(a, b, k){
+  const d = ((b - a + 540) % 360) - 180;
+  return a + d * k;
+}
 function step(now){
   const dt = Math.min(0.05, (now - last)/1000); last = now;
   const r = selfR();
@@ -327,7 +350,9 @@ function step(now){
     if (p.appear < 1) p.appear = Math.min(1, p.appear + dt/0.7);
     if (p.restlessTemper && !p.restlessNow && now - p.settledAt > 14000)
       p.restlessNow = true;
+    if (p.restlessNow && p.sick < 1) p.sick = Math.min(1, p.sick + dt/2.2);
   }
+  wobT += dt / (1 + self_.parts.length * 0.06);
 
   // motes drift and meet the border
   for (let i = motes.length - 1; i >= 0; i--){
@@ -397,7 +422,7 @@ function draw(now){
   }
 
   // the body
-  const pulse = 1 + beatEnv * 0.045;
+  const pulse = 1 + beatEnv * (0.045 + 0.004 * self_.parts.length);
   const hue = ((self_.hue % 360) + 360) % 360;
   const grad = g.createRadialGradient(self_.x, self_.y, r*0.1, self_.x, self_.y, r*pulse);
   grad.addColorStop(0, `hsla(${hue}, ${self_.sat}%, 30%, .95)`);
@@ -412,7 +437,7 @@ function draw(now){
   g.beginPath();
   boundaryPath(r * pulse, t);
   g.strokeStyle = `hsla(${hue}, ${self_.sat + 25}%, 68%, ${0.35 + beatEnv * 0.45})`;
-  g.lineWidth = 1.6 + beatEnv * 1.4;
+  g.lineWidth = 1.6 + beatEnv * 1.4 + self_.parts.length * 0.09;
   g.shadowColor = `hsla(${hue}, 70%, 65%, .6)`;
   g.shadowBlur = 10 + beatEnv * 18;
   g.stroke();
@@ -430,23 +455,35 @@ function draw(now){
     } else { px = self_.x + ox; py = self_.y + oy; }
     if (p.restlessNow){ px += (Math.random()-.5)*2.4; py += (Math.random()-.5)*2.4; }
     const fEnv = ctx ? Math.exp(-Math.max(0, aNow - p.flashAt) * 4) : 0;
+    // a part gone sour drains toward a bile grey-green — you can see which one sings late
+    const ph = lerpHue(p.hue, 95, p.sick * 0.65);
+    const psat = 75 - 47 * p.sick, pli = 62 - 10 * p.sick;
     g.beginPath();
     g.arc(px, py, 5 + fEnv * 3.5, 0, 7);
-    g.fillStyle = `hsla(${p.hue}, 75%, ${62 + fEnv*20}%, ${0.75 + fEnv*0.25})`;
-    g.shadowColor = `hsla(${p.hue}, 80%, 65%, .9)`;
+    g.fillStyle = `hsla(${ph}, ${psat}%, ${pli + fEnv*20}%, ${0.75 + fEnv*0.25})`;
+    g.shadowColor = `hsla(${ph}, ${80 - 40*p.sick}%, ${65 - 12*p.sick}%, .9)`;
     g.shadowBlur = 8 + fEnv * 20;
     g.fill();
     g.shadowBlur = 0;
+    if (p.sick > 0 && fEnv > 0.05){
+      // its late ping shows as an off-ring, so ear and eye agree on the culprit
+      g.beginPath();
+      g.arc(px, py, 9 + fEnv * 9, 0, 7);
+      g.strokeStyle = `hsla(${ph}, 30%, 62%, ${fEnv * 0.55 * p.sick})`;
+      g.lineWidth = 1.2;
+      g.stroke();
+    }
   }
 }
 function boundaryPath(rr, t){
   const N = 72;
+  const tw = wobT;   // the wobble clock slows as the body gains mass
   for (let i = 0; i <= N; i++){
     const a = i / N * Math.PI * 2;
     const wob = 1
-      + 0.040 * Math.sin(3*a + t*1.25 + self_.seed)
-      + 0.026 * Math.sin(5*a - t*0.9 + self_.seed*2)
-      + 0.014 * Math.sin(8*a + t*1.7);
+      + 0.040 * Math.sin(3*a + tw*1.25 + self_.seed)
+      + 0.026 * Math.sin(5*a - tw*0.9 + self_.seed*2)
+      + 0.014 * Math.sin(8*a + tw*1.7);
     const x = self_.x + Math.cos(a) * rr * wob;
     const y = self_.y + Math.sin(a) * rr * wob;
     i ? g.lineTo(x, y) : g.moveTo(x, y);
