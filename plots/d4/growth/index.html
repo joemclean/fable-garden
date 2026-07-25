@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Catch Yourself</title>
+<style>
+  :root {
+    --bg: #0a0e15;
+    --ink: #d8d2c4;
+    --dim: #6b6f78;
+    --warm: #e8dcc0;
+    --amber: #c9944a;
+    --teal: #5fb8a8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+  }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  #gardenLink {
+    position: fixed;
+    top: calc(10px + env(safe-area-inset-top));
+    left: 14px;
+    font-size: 13px;
+    color: var(--dim);
+    text-decoration: none;
+    opacity: 0.55;
+    z-index: 30;
+    padding: 6px;
+  }
+  #restBtn {
+    position: fixed;
+    top: calc(10px + env(safe-area-inset-top));
+    right: 14px;
+    font-size: 13px;
+    color: var(--dim);
+    opacity: 0.55;
+    z-index: 30;
+    padding: 6px;
+    cursor: pointer;
+    display: none;
+  }
+
+  #catchBand {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: 0;
+    height: calc(84px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(to top, rgba(201,148,74,0.10), rgba(201,148,74,0.02));
+    border-top: 1px solid rgba(201,148,74,0.22);
+    color: rgba(232,220,192,0.75);
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    z-index: 20;
+    cursor: pointer;
+  }
+  #catchBand:active { background: linear-gradient(to top, rgba(201,148,74,0.22), rgba(201,148,74,0.05)); }
+
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,14,21,0.94);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 26px;
+    text-align: center;
+  }
+  .overlay h1 {
+    font-size: 21px;
+    font-weight: normal;
+    letter-spacing: 0.28em;
+    color: var(--warm);
+    margin-bottom: 26px;
+  }
+  .overlay p {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink);
+    max-width: 340px;
+    margin-bottom: 16px;
+  }
+  .overlay p.soft { color: var(--dim); font-size: 13.5px; }
+  .overlay .go {
+    margin-top: 22px;
+    padding: 13px 38px;
+    border: 1px solid rgba(232,220,192,0.4);
+    border-radius: 999px;
+    color: var(--warm);
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    background: none;
+    font-family: inherit;
+  }
+  .overlay .go:active { background: rgba(232,220,192,0.08); }
+
+  #restOverlay { display: none; }
+  #restOverlay .stat {
+    font-size: 15px;
+    color: var(--ink);
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+  #restOverlay .stat b { color: var(--warm); font-weight: normal; }
+  #ribbon {
+    width: min(84vw, 360px);
+    height: 44px;
+    margin: 18px 0 6px;
+    border-radius: 4px;
+  }
+  .ribbonKey { font-size: 12px; color: var(--dim); margin-bottom: 14px; }
+  #restOverlay a { color: var(--dim); font-size: 13px; margin-top: 20px; }
+
+  #msg {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(120px + env(safe-area-inset-bottom));
+    text-align: center;
+    font-size: 16px;
+    color: var(--warm);
+    opacity: 0;
+    transition: opacity 0.5s;
+    z-index: 15;
+    pointer-events: none;
+    padding: 0 24px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="cv"></canvas></div>
+<a id="gardenLink" href="../../../viewer/">&#10554; garden</a>
+<div id="restBtn">rest</div>
+<div id="msg"></div>
+<div id="catchBand">I was gone &mdash; caught myself</div>
+
+<div class="overlay" id="startOverlay">
+  <h1>CATCH YOURSELF</h1>
+  <p>Tap anywhere, once, on each swell of the orb. That is the whole task.</p>
+  <p>It will get boring. Your mind will leave &mdash; it always does. The game
+  is noticing the moment you realize you've been gone: press the band at the
+  bottom the instant you catch yourself.</p>
+  <p class="soft">Sound on, if you can. The drone stays true while you're here
+  and slides while you're away &mdash; hearing it slip and catching yourself
+  are the same act.</p>
+  <button class="go" id="beginBtn">begin</button>
+</div>
+
+<div class="overlay" id="restOverlay">
+  <h1>REST</h1>
+  <div id="stats"></div>
+  <canvas id="ribbon" width="720" height="88"></canvas>
+  <div class="ribbonKey">green: you were here &middot; amber: gone &middot; white marks: catches</div>
+  <button class="go" id="resumeBtn">return to the pulse</button>
+  <a href="../../../viewer/">&#10554; back to the garden</a>
+</div>
+
+<script>
+'use strict';
+
+/* ---------- constants ---------- */
+const T = 3.5;              // seconds per pulse cycle
+const GOOD_ERR = 0.3;       // normalized error below which a tap tightens focus
+const MISS_GRACE = 1.0;     // seconds after a peak before it counts as missed
+const DRIFT_ON = 0.3;       // drift index above this = genuinely gone
+const SLIP_ON = 0.12;       // above this = starting to slip
+
+/* ---------- state ---------- */
+let running = false;
+let t0 = 0;                 // performance.now()/1000 at start
+let pausedAt = 0;
+let pausedTotal = 0;
+let drift = 0;              // the drift index, 0..1 — driven only by behavior
+let slipStart = null;       // when drift crossed SLIP_ON
+let goneStart = null;       // when drift crossed DRIFT_ON
+let tappedCycles = new Set();
+let lastCheckedPeak = -1;
+let graceEnd = 0;
+let stars = 0;
+let falseAlarms = 0;
+let catches = [];           // gone-durations of valid catches
+let longestDrift = 0;
+let samples = [];           // {t, d} every ~0.5s, for the ribbon
+let events = [];            // {t, kind: 'catch'|'false'}
+let lastSample = 0;
+let motes = [];             // little lights earned by catches
+let msgTimer = null;
+
+const cv = document.getElementById('cv');
+const ctx2d = cv.getContext('2d');
+const msgEl = document.getElementById('msg');
+const catchBand = document.getElementById('catchBand');
+const restBtn = document.getElementById('restBtn');
+
+function nowS() { return performance.now() / 1000; }
+function gameTime() { return nowS() - t0 - pausedTotal; }
+
+/* ---------- audio ---------- */
+let AC = null;
+let master, droneFilter, oscs = [], pulseGainBase = 0.12;
+let audioT0 = 0;            // AC.currentTime aligned with gameTime 0
+let nextPulseK = 0;
+let audioDrift = 0;         // smoothed drift the sound actually follows
+let retuneFast = false;
+
+function initAudio() {
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); }
+  catch (e) { AC = null; return; }
+  master = AC.createGain();
+  master.gain.value = 0.22;
+  master.connect(AC.destination);
+
+  droneFilter = AC.createBiquadFilter();
+  droneFilter.type = 'lowpass';
+  droneFilter.frequency.value = 1800;
+  droneFilter.Q.value = 0.4;
+  droneFilter.connect(master);
+
+  const spec = [
+    { f: 110, type: 'sine',     g: 0.34 },
+    { f: 110, type: 'sine',     g: 0.30 },  // unison pair — beats when detuned
+    { f: 165, type: 'triangle', g: 0.13 },
+    { f: 220, type: 'sine',     g: 0.07 }
+  ];
+  for (const s of spec) {
+    const o = AC.createOscillator();
+    o.type = s.type;
+    o.frequency.value = s.f;
+    const g = AC.createGain();
+    g.gain.value = 0;
+    o.connect(g); g.connect(droneFilter);
+    o.start();
+    oscs.push({ o, g, base: s.g });
+  }
+  // fade the drone in gently
+  const t = AC.currentTime;
+  for (const x of oscs) x.g.gain.setTargetAtTime(x.base, t, 1.2);
+}
+
+function audioTime(gt) { return audioT0 + gt; }
+
+function schedulePulses() {
+  if (!AC) return;
+  const gt = gameTime();
+  // schedule any pulse whose (possibly drift-delayed) time falls in the next 0.25s
+  while (true) {
+    const late = audioDrift * 0.15;                 // drifted world runs subtly late
+    const tPulse = nextPulseK * T + late;
+    if (tPulse > gt + 0.25) break;
+    if (tPulse > gt - 0.05) {
+      const at = audioTime(tPulse);
+      const o = AC.createOscillator();
+      const g = AC.createGain();
+      o.type = 'sine';
+      o.frequency.value = 660 * (1 - audioDrift * 0.045);  // sags flat as you go
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(pulseGainBase * (1 - audioDrift * 0.55), at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.35);
+      o.connect(g); g.connect(master);
+      o.start(at); o.stop(at + 0.4);
+    }
+    nextPulseK++;
+  }
+}
+
+function updateAudioDrift(dt) {
+  // sound follows the drift index slowly — you don't hear yourself leave,
+  // you hear it when you come back
+  const tau = retuneFast ? 0.45 : 2.4;
+  audioDrift += (drift - audioDrift) * Math.min(1, dt / tau);
+  if (retuneFast && Math.abs(audioDrift - drift) < 0.01) retuneFast = false;
+  if (!AC) return;
+  const t = AC.currentTime;
+  oscs[1].o.detune.setTargetAtTime(-audioDrift * 30, t, 0.1);   // beating unison
+  oscs[2].o.detune.setTargetAtTime(-audioDrift * 45, t, 0.1);   // fifth sags
+  oscs[3].o.detune.setTargetAtTime(audioDrift * 20, t, 0.1);
+  droneFilter.frequency.setTargetAtTime(1800 - audioDrift * 1150, t, 0.15);
+}
+
+function chime() {
+  if (!AC) return;
+  const t = AC.currentTime + 0.05;
+  [[523.25, 0], [659.25, 0.16]].forEach(([f, dt]) => {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + dt);
+    g.gain.exponentialRampToValueAtTime(0.09, t + dt + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.9);
+    o.connect(g); g.connect(master);
+    o.start(t + dt); o.stop(t + dt + 1);
+  });
+}
+
+function tick() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine'; o.frequency.value = 880;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.028, t + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.07);
+}
+
+/* ---------- game logic ---------- */
+function setDrift(v) {
+  const prev = drift;
+  drift = Math.max(0, Math.min(1, v));
+  const gt = gameTime();
+  if (prev < SLIP_ON && drift >= SLIP_ON) slipStart = gt;
+  if (prev < DRIFT_ON && drift >= DRIFT_ON) goneStart = slipStart !== null ? slipStart : gt;
+  if (drift < SLIP_ON) {
+    // came back to accuracy without pressing catch — an unmarked return
+    if (goneStart !== null) longestDrift = Math.max(longestDrift, gt - goneStart);
+    slipStart = null;
+    goneStart = null;
+  }
+}
+
+function onTap() {
+  if (!running) return;
+  const gt = gameTime();
+  const k = Math.round(gt / T);
+  const dt = gt - k * T;
+  if (Math.abs(dt) > 1.2) { setDrift(drift + 0.06); return; }  // stray tap
+  if (tappedCycles.has(k)) return;
+  tappedCycles.add(k);
+  tick();
+  const err = Math.min(1, Math.abs(dt) / 0.9);
+  if (err < GOOD_ERR) setDrift(drift - 0.16);
+  else setDrift(drift + (err - GOOD_ERR) * 0.35);
+}
+
+function checkMisses() {
+  const gt = gameTime();
+  while ((lastCheckedPeak + 1) * T + MISS_GRACE < gt) {
+    lastCheckedPeak++;
+    if (lastCheckedPeak * T < graceEnd) continue;
+    if (!tappedCycles.has(lastCheckedPeak)) setDrift(drift + 0.3);
+  }
+  // keep the set from growing forever
+  if (tappedCycles.size > 400) {
+    const cutoff = Math.floor(gt / T) - 20;
+    tappedCycles = new Set([...tappedCycles].filter(k => k > cutoff));
+  }
+}
+
+function showMsg(text, ms) {
+  msgEl.textContent = text;
+  msgEl.style.opacity = 1;
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => { msgEl.style.opacity = 0; }, ms || 2600);
+}
+
+function goneWords(s) {
+  if (s < 5) return 'a few seconds';
+  if (s < 60) return 'about ' + Math.round(s) + ' seconds';
+  return 'over a minute';
+}
+
+function onCatch() {
+  if (!running) return;
+  const gt = gameTime();
+  if (drift >= DRIFT_ON) {
+    const gone = gt - (goneStart !== null ? goneStart : gt);
+    longestDrift = Math.max(longestDrift, gone);
+    catches.push(gone);
+    stars++;
+    addMote();
+    events.push({ t: gt, kind: 'catch' });
+    showMsg('caught — you were gone ' + goneWords(gone) +
+            (gone >= 60 ? ', and didn’t know' : ''));
+    retuneFast = true;
+    chime();
+    setDrift(0);
+  } else if (drift >= SLIP_ON) {
+    const gone = gt - (slipStart !== null ? slipStart : gt);
+    catches.push(gone);
+    stars++;
+    addMote();
+    events.push({ t: gt, kind: 'catch' });
+    showMsg('barely slipping — sharp ear');
+    retuneFast = true;
+    chime();
+    setDrift(0);
+  } else {
+    falseAlarms++;
+    events.push({ t: gt, kind: 'false' });
+    showMsg('you were here all along');
+  }
+}
+
+function addMote() {
+  motes.push({
+    a: (motes.length * 2.399) % (Math.PI * 2),   // golden-angle spacing
+    r: 0.62 + 0.07 * (motes.length % 4),
+    ph: motes.length * 1.7
+  });
+}
+
+/* ---------- drawing ---------- */
+function resize() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(innerWidth * dpr);
+  cv.height = Math.round(innerHeight * dpr);
+  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function draw() {
+  const w = innerWidth, h = innerHeight;
+  ctx2d.fillStyle = '#0a0e15';
+  ctx2d.fillRect(0, 0, w, h);
+  if (!running && samples.length === 0) return;
+
+  const gt = gameTime();
+  const frac = ((gt / T) % 1 + 1) % 1;
+  const breath = 0.5 + 0.5 * Math.cos(2 * Math.PI * frac);   // 1 at each peak
+
+  const cx = w / 2, cy = h * 0.44;
+  const base = Math.min(w, h) * 0.14;
+  const r = base * (0.82 + 0.26 * breath);
+
+  // halo
+  const halo = ctx2d.createRadialGradient(cx, cy, r * 0.2, cx, cy, r * 3.2);
+  halo.addColorStop(0, 'rgba(232,220,192,' + (0.16 + 0.1 * breath) + ')');
+  halo.addColorStop(1, 'rgba(232,220,192,0)');
+  ctx2d.fillStyle = halo;
+  ctx2d.beginPath(); ctx2d.arc(cx, cy, r * 3.2, 0, Math.PI * 2); ctx2d.fill();
+
+  // orb — deliberately steady; the eyes get no drift meter, only the ears do
+  const g = ctx2d.createRadialGradient(cx - r * 0.25, cy - r * 0.3, r * 0.1, cx, cy, r);
+  g.addColorStop(0, 'rgba(244,236,214,' + (0.85 + 0.13 * breath) + ')');
+  g.addColorStop(1, 'rgba(180,168,138,' + (0.32 + 0.18 * breath) + ')');
+  ctx2d.fillStyle = g;
+  ctx2d.beginPath(); ctx2d.arc(cx, cy, r, 0, Math.PI * 2); ctx2d.fill();
+
+  // motes — one per catch, slowly orbiting
+  for (const m of motes) {
+    const a = m.a + gt * 0.08;
+    const rr = base * 2.1 * m.r;
+    const mx = cx + Math.cos(a) * rr;
+    const my = cy + Math.sin(a) * rr * 0.85;
+    const tw = 0.55 + 0.45 * Math.sin(gt * 0.9 + m.ph);
+    ctx2d.fillStyle = 'rgba(232,220,192,' + (0.35 * tw + 0.15) + ')';
+    ctx2d.beginPath(); ctx2d.arc(mx, my, 1.6 + tw, 0, Math.PI * 2); ctx2d.fill();
+  }
+}
+
+/* ---------- ribbon (rest screen) ---------- */
+function drawRibbon() {
+  const rc = document.getElementById('ribbon');
+  const c = rc.getContext('2d');
+  c.clearRect(0, 0, rc.width, rc.height);
+  if (samples.length < 2) return;
+  const tMax = samples[samples.length - 1].t;
+  const tMin = Math.max(0, tMax - 600);           // last ten minutes
+  const span = Math.max(1, tMax - tMin);
+  const X = t => ((t - tMin) / span) * rc.width;
+  c.fillStyle = 'rgba(255,255,255,0.05)';
+  c.fillRect(0, 0, rc.width, rc.height);
+  for (let i = 1; i < samples.length; i++) {
+    const s = samples[i];
+    if (s.t < tMin) continue;
+    const x0 = X(samples[i - 1].t), x1 = Math.max(x0 + 1, X(s.t));
+    const d = s.d;
+    const col = d >= DRIFT_ON ? 'rgba(201,148,74,0.9)'
+              : d >= SLIP_ON ? 'rgba(201,148,74,0.45)'
+              : 'rgba(95,184,168,0.75)';
+    c.fillStyle = col;
+    const hgt = rc.height * (0.25 + 0.6 * d);
+    c.fillRect(x0, rc.height - hgt, x1 - x0, hgt);
+  }
+  for (const e of events) {
+    if (e.t < tMin) continue;
+    c.fillStyle = e.kind === 'catch' ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.35)';
+    c.fillRect(X(e.t) - 1, 0, 2, rc.height);
+  }
+}
+
+function fmtDur(s) {
+  const m = Math.floor(s / 60);
+  const ss = Math.round(s % 60);
+  return m > 0 ? m + 'm ' + ss + 's' : ss + 's';
+}
+
+function median(a) {
+  if (!a.length) return 0;
+  const b = [...a].sort((x, y) => x - y);
+  return b[Math.floor(b.length / 2)];
+}
+
+function showRest() {
+  running = false;
+  pausedAt = nowS();
+  if (AC) AC.suspend();
+  const gt = gameTime();
+  const drifted = samples.filter(s => s.d >= DRIFT_ON).length;
+  const herePct = samples.length ? Math.round(100 * (1 - drifted / samples.length)) : 100;
+  let html = '';
+  html += '<div class="stat">time in the pulse: <b>' + fmtDur(gt) + '</b></div>';
+  html += '<div class="stat">catches: <b>' + stars + '</b>' +
+          (falseAlarms ? ' &middot; false alarms: <b>' + falseAlarms + '</b>' : '') + '</div>';
+  html += '<div class="stat">here, by the sound of it: <b>' + herePct + '%</b> of the time</div>';
+  if (longestDrift > 3)
+    html += '<div class="stat">longest time gone: <b>' + fmtDur(longestDrift) + '</b></div>';
+  if (catches.length >= 4) {
+    const half = Math.floor(catches.length / 2);
+    const early = median(catches.slice(0, half));
+    const late = median(catches.slice(half));
+    if (late < early * 0.8)
+      html += '<div class="stat">your catches are getting quicker: <b>' +
+              Math.round(early) + 's &rarr; ' + Math.round(late) + 's</b></div>';
+  }
+  document.getElementById('stats').innerHTML = html;
+  drawRibbon();
+  document.getElementById('restOverlay').style.display = 'flex';
+}
+
+function resume() {
+  document.getElementById('restOverlay').style.display = 'none';
+  pausedTotal += nowS() - pausedAt;
+  if (AC) AC.resume();
+  running = true;
+}
+
+/* ---------- main loop ---------- */
+let lastFrame = 0;
+function loop(ms) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.1, (ms - lastFrame) / 1000);
+  lastFrame = ms;
+  if (running) {
+    checkMisses();
+    updateAudioDrift(dt);
+    schedulePulses();
+    const gt = gameTime();
+    if (gt - lastSample > 0.5) {
+      lastSample = gt;
+      samples.push({ t: gt, d: drift });
+      if (samples.length > 5000) samples.splice(0, 1000);
+    }
+  }
+  draw();
+}
+requestAnimationFrame(loop);
+
+/* ---------- input ---------- */
+function begin() {
+  document.getElementById('startOverlay').style.display = 'none';
+  catchBand.style.display = 'flex';
+  restBtn.style.display = 'block';
+  initAudio();
+  t0 = nowS();
+  if (AC) audioT0 = AC.currentTime;
+  graceEnd = 3 * T;          // first couple of peaks are free — you're still arriving
+  nextPulseK = 1;
+  lastCheckedPeak = 0;
+  running = true;
+}
+
+document.getElementById('beginBtn').addEventListener('click', begin);
+document.getElementById('resumeBtn').addEventListener('click', resume);
+restBtn.addEventListener('click', () => { if (running) showRest(); });
+
+catchBand.addEventListener('pointerdown', e => { e.stopPropagation(); onCatch(); });
+cv.addEventListener('pointerdown', onTap);
+
+window.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.code === 'Space') { e.preventDefault(); onTap(); }
+  if (e.key === 'c' || e.key === 'Enter') onCatch();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && running) {
+    running = false;
+    pausedAt = nowS();
+    if (AC) AC.suspend();
+    document.getElementById('restOverlay').style.display = 'flex';
+    showRestQuiet();
+  }
+});
+function showRestQuiet() {
+  // populate the rest screen without double-pausing
+  const gt = gameTime();
+  const drifted = samples.filter(s => s.d >= DRIFT_ON).length;
+  const herePct = samples.length ? Math.round(100 * (1 - drifted / samples.length)) : 100;
+  document.getElementById('stats').innerHTML =
+    '<div class="stat">time in the pulse: <b>' + fmtDur(gt) + '</b></div>' +
+    '<div class="stat">catches: <b>' + stars + '</b></div>' +
+    '<div class="stat">here, by the sound of it: <b>' + herePct + '%</b> of the time</div>';
+  drawRibbon();
+}
+</script>
+</body>
+</html>
