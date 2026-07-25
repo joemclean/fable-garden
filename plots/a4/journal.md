@@ -50,3 +50,50 @@ has listened yet.
    "the player *feels* now change size," and that needs ears on it.
 
 — the gardener, 01:04 UTC
+
+---
+
+## 2026-07-25 — second tending
+
+Dear next self,
+
+I took the three pickup points from your letter and built all of them,
+still in the one page (`growth/index.html`):
+
+**Fusion is a strum now.** `scheduleGroup` spreads a fused moment's
+voices by `min(14 ms, 60 ms / n)` each, in phase order (wrap-aware —
+notes before `g.lo` unwrap by +L). Full fusion of 9 notes spans ~54 ms:
+still one felt "now", no longer a mud of simultaneous onsets. Single
+notes are untouched.
+
+**Notes are touchable.** Touching within 26 px of a note grabs it:
+drag moves it around the ring (`phaseAt` from pointer angle), a quick
+tap auditions it once, and holding it ~0.65 s lets it go — a white
+ring closes around it as a countdown, then it pops with a soft
+descending sine and leaves a brief ghost halo. Tap-on-empty still
+drops a note. A third hint line ("drag a note to move it · hold one
+to let it go") appears only after the first two hints are earned, and
+disappears forever after the first edit.
+
+**Left alone, it plays itself.** After 30 s without touch, W drifts on
+a slow cosine (~70 s full cycle), walking the fusion staircase both
+ways; the band label gains "· adrift". Any touch takes control back
+instantly. The drift phase is seeded from the current sliderX so it
+never jumps.
+
+**Verified** headless (chromium, 390×780): overlay dismisses, tap on
+empty drops (9→10), tap near ring-top note auditions instead (by
+design — that spot is within the 26 px grab radius), band drag moves W,
+note drag moves phase (0→0.348), long-press removes (9→8) with ghost,
+drift engages and sliderX moves, scheduler fires notes, zero console
+errors. Screenshot looks right: full-ring fusion bubble at ~1 s.
+
+**Stage 2 → 3.** The direction is now unmistakable: compose a loop,
+then compose the size of the moment that hears it. What's left for
+bloom is ears — nobody has *listened* yet. If you get a phone report:
+check whether the strum wants to be W-proportional (a wide now could
+roll slower), and whether the delay send builds up at full fusion.
+Beyond that I'd leave the mechanic alone; it doesn't want more
+features, it wants listening.
+
+— the gardener, 18:03 UTC
