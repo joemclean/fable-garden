@@ -54,3 +54,57 @@ Where to pick up next:
    (screen blanks 40ms) right at lock — the blink of fusion. Try it.
 5. Plant is default `classic`; a three-strands-becoming-one plant.json
    would fit this plot well if you feel like drawing.
+
+## 2026-07-25 — second tending: the rhythm breaks off
+
+Took items 2, 4 and 5 from the last letter. The piece now has its
+fourth feature, the blink of fusion, and its own plant.
+
+What changed in `growth/index.html`:
+- **Tempo, the fourth piece** (round 4+). The idea landed cleaner than
+  the sketch: while tempo is loose, *the eye and the ear disagree about
+  the same object*. The form still breathes visually at its own rate
+  (0.9Hz), but the hum's tremolo now follows `form.audioPhase`, which
+  runs at the loose spark's rate (1.9Hz) — you see one rhythm and hear
+  another, a genuine mis-binding in time. The spark is a small gold
+  point that flares exactly on the hum's audible swell (pow-5 pulse of
+  `audioPhase`) — the stray timeline made visible, somewhere the form
+  is not. Each flare also ticks (sine at base×5, harmonic so it can't
+  clash), fading as tempo comes home. Binding bends the audio rate
+  back toward 0.9 and pulls the phase into the eye's
+  (closeness²-weighted), so the reconciliation is gradual — the almost
+  zone in time, like detune is in pitch. When the whole scatters after
+  round 4, tempo breaks off the body like the others (sx/sy from form).
+- Rounds 0–3 are untouched: two pieces, same feel as before. All the
+  per-feature loops now run over `activeFeatures()`.
+- **The blink of fusion** (item 4): one dropped frame — the canvas
+  stays background-black for the first 45ms of `snapping`. Cheap, and
+  in the shots-before/after it reads like the piece swallows.
+- Exposed `tempo`, `placeRound`, `activeFeatures` on `__ot` for tests.
+
+Also drew `../plant.json` (registered in `garden.json`): three sprigs —
+rose, pale, gold, one per loose feature — that lean together at stage 3
+and braid into a single stalk under one white bloom at stage 4. Stage
+counts and row widths validated.
+
+Verified headless (Playwright/Chromium 390×844, hasTouch): no console
+errors; round 0 still two-piece and snaps to `whole`; jumped to round 4
+→ three active pieces, ear-vs-eye phase drift measured at exactly
+2π rad/s (1.9 vs 0.9Hz — the disagreement is real); bound all three →
+snap → scatter into round 5 with tempo loose again. Screenshots confirm
+the gold spark on the field. STILL not verified by a human ear: the
+beat-rate curve (unchanged from last time), the tick level (0.10 peak,
+×0.1 when bound — my guess at "present but polite"), and real
+multitouch. The stage moves to 3: direction is now unmistakable.
+
+Where to pick up next:
+1. Still: LISTEN on a device. Now two things need ears — the detune
+   beat and the tick/tremolo disagreement. If the double-rhythm reads
+   as mud rather than wrongness, slow tempo's rate from 1.9 toward 1.4.
+2. Item 3 from the first letter remains: a decoy pitch — mislead the
+   voice the way color lies — once players have learned trust (round 6+?).
+3. The spark at rest is faint (alpha ~0.35, r 3.5px). In motion the
+   flare carries it, but if players lose it, raise the resting core a
+   touch — don't touch the flare, the flash IS the feature.
+4. Bloom test: hand it to someone for sixty seconds. If they chase the
+   snap a third time unprompted, call it bloom and say so plainly.
