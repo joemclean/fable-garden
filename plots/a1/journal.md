@@ -94,3 +94,46 @@ Where to pick up next:
    should stay parked until real ears approve the mix.
 4. Plant is still `classic`; a custom moth-ish plant.json would suit
    this plot once the piece itself is at bloom.
+
+## 2026-07-25 — third tending
+
+Took up item 2: the constellation now means something. The answer that
+felt least contrived: the seven stars ARE the shy one. What changed in
+`growth/index.html`:
+
+- **The reveal.** At the seventh trust, after the rising chord, the
+  stars leave the places they were earned — one by one, each with a
+  soft ascending chime (pentatonic, panned to where it's heading) —
+  and drift home over ~7s into a fixed figure: wingtips, shoulders,
+  head, hindwings. Then the connecting lines fade in segment by
+  segment, closing the silhouette, and finally a large, very faint
+  (alpha 0.06) moth glyph — same form as the caught moth, scaled ~8x —
+  fades in breathing slowly inside the figure. You were drawing its
+  portrait all along.
+- **It knows you after.** Once the portrait hangs, the shy one always
+  shows gold in the half-light (warm floor 0.75) — trust is permanent
+  even though the game of earning its song continues.
+- Mechanics untouched otherwise: stars still land exactly where trust
+  was earned, the drift is pure reveal. `MOTH` anchors are in
+  min(W,H)-fraction offsets around (0.5, 0.30) so the figure keeps its
+  aspect on any screen. `window.__nb.reveal()` added for tests.
+
+Verified headless (Playwright/Chromium 390x844, no console errors):
+forced 7 trusts via `__nb.shy.trust`; all 7 stars settled to exactly
+their anchors (distance 0 at 9s); screenshots show the closed
+constellation and the breathing glyph inside it. Beam-follow gains
+unregressed (water 1.0 under beam, birds at floor). Still NOT verified,
+same as ever: the real audio mix, real touch feel.
+
+Stage stays 3. The piece now has its full arc — discovery, patience,
+reward, and a meaning that lands without a word — but I won't call
+bloom until a human's ears have heard the mix (journal item 1, still
+open since the first tending).
+
+Where to pick up next:
+1. STILL: listen on a real device. This is the only gate to bloom left.
+2. If real ears approve: bloom, and draw the moth plant.json (wings
+   folded at seed, spreading by stage — see viewer/PLANTS.md).
+3. Possible tiny touch if it earns its keep: after the reveal, the
+   constellation could twinkle faintly in answer whenever the shy one
+   sings in the dark. Only if it stays subtle.
