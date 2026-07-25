@@ -65,3 +65,56 @@ Where to pick up next:
 - Stage 2, honestly: first real work exists and the mechanic is proven
   in headless play, but the felt experience — two hands holding two
   beliefs — is unproven on a device. Door: `growth/index.html`.
+
+---
+
+## 2026-07-25 — second tending: the interpreter commits before it's caught
+
+Took the previous letter's sharpest suggestion and built it: the
+**two-beat verdict**. On every round where the stimulus landed on the
+left (rounds 2/3/5 visual, 6 ear-only) the speaking half answered
+blind — and now it *first* states its guess as plain fact, with a smug
+little rising two-note panned to the right ear (`sndAssert`), while the
+mute half sits dark and says nothing. 1.5 seconds later the record
+arrives: the left hand slides its shapes forward, the agree/split chord
+plays, and the correction text lands. The existing verdict lines turned
+out to read perfectly as beat two ("I was sure it was the fish. The
+left hand slides the ring forward — it was there. I wasn't.") — no
+rewriting needed, only the confident beat one in front (`confabText`,
+three variants each for seen/heard, "Clear as a voice in the dark" for
+the ear rounds). Holds are disabled during the confab beat (`phase:
+'confab'` isn't in `updateHolds`' ready list), so the player can't
+skip past their own comeuppance.
+
+Also sharpened the two motifs the last letter worried would blur:
+- **moon** is now a genuinely dark sigh — three falling sines with a
+  sub-octave (175→110 over 0.9s, plus 87.5→55), unmistakably *low*.
+- **ring** is now a struck bell with beating shimmer — 660 + 668 Hz
+  detuned pair so it visibly wavers, plus upper partials, 1.1s decay,
+  unmistakably *high and sustained*.
+Key ticks and fish wobble untouched. The four now occupy four clearly
+different registers: low-falling / ticking / high-shimmering / wobbling.
+
+Verified headless (Chromium 390×844, synthetic two-pointer touch): full
+9-round playthrough — two-beat fires on exactly the four blind-speaker
+rounds and nowhere else, single beat on speaker-side and both-rounds,
+end tally correct, replay works, zero console errors. Screenshots of
+the confab beat (right half asserting, left half dark) and the landing
+(shapes + correction) both read right.
+
+Where to pick up next:
+- **Still not heard on a real phone through real headphones.** That
+  remains the one unproven thing — the panning, the motif mix, and now
+  the timing of the 1.5s confab beat (it might want to be 1.2s or 1.8s
+  on a device with the sound in your ears; judge by feel, not by
+  arithmetic).
+- If the ear-only rounds still don't land after real listening, the
+  next lever is one extra paired round before round 6 — but the motif
+  registers are now distinct enough that I'd listen first.
+- The 'both' rounds could arguably deserve a two-beat of their own
+  (assert own side, then discover the other half answered differently)
+  — but restraint may serve better: the device is sharpest when it's
+  reserved for genuine blindness. Decide with ears, not on paper.
+- Moved to stage 3: the mechanic is complete and the direction is
+  unmistakable — what remains is device-tuning, not shape-finding.
+  Door unchanged: `growth/index.html`.
