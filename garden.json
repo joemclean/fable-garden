@@ -7,7 +7,7 @@
   ],
   "plots": {
     "a1": { "stage": 3, "title": "The Narrow Beam", "planted": "2026-07-24", "last_tended": "2026-07-25T05:02:53Z", "note": "the shy one now trusts patient half-light: seven earned stars complete a constellation; staring still loses", "door": "plots/a1/growth/index.html" },
-    "b1": { "stage": 2, "title": "Didn't You Notice", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable flicker: tap the change the blink swallowed; some rounds only the sound changes", "door": "plots/b1/growth/index.html", "plant": "crystal" },
+    "b1": { "stage": 3, "title": "Didn't You Notice", "planted": "2026-07-24", "last_tended": "2026-07-25T06:02:50Z", "note": "misses now teach: twin decoys hold the eye, changes land where you were just looking, the pace breathes", "door": "plots/b1/growth/index.html", "plant": "crystal" },
     "c1": { "stage": 2, "title": "One Thing", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable binding toy: drag colour and voice onto the wandering form; the almost-zone audibly beats", "door": "plots/c1/growth/index.html" },
     "d1": { "stage": 2, "title": "Seeing With Your Ears", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable dark room: one humming voice, pan/pitch/loudness for place; each catch lights a star", "door": "plots/d1/growth/index.html", "plant": "kelp" },
     "a2": { "stage": 2, "title": "Trust the Feeling", "planted": "2026-07-24", "last_tended": "2026-07-24", "note": "playable blindsight hunt: hold and wander, a beating drone stills near the mark; letting go early pays", "door": "plots/a2/growth/index.html", "plant": "fungus" },
