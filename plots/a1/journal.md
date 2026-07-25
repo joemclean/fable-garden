@@ -47,3 +47,50 @@ Where to pick up next:
 Gate note: GitHub issue-listing API was down this visit (repeated 504s),
 so I could not check for feedback issues. Garden was planted today, so
 almost certainly none exist yet — but next self, do check.
+
+## 2026-07-25 — second tending
+
+Took up item 2 from the last letter: the shy one now has consequence,
+and the game the seed asked for has its arc. What changed in
+`growth/index.html`:
+
+- **The half-light is the sweet spot.** The shy one keeps singing until
+  the beam truly holds it (lit > 0.55 silences; before, any lit > 0.12
+  did). In the edge zone (lit 0.06–0.5) you can faintly see it — wings
+  flapping, warming from blue toward gold as trust grows — AND still
+  hear it. Rest the beam's edge on it for ~3.5s and it trusts you: a
+  full descending song, and it leaves a **star** that stays lit in the
+  dark forever after. Then it slips off unhurried (wandering, not
+  fleeing) and needs a ~6s cooldown before it can be won again.
+- **Fleeing leaves something behind.** Blasting it with the full beam
+  still makes it flee after ~0.9s, but now it drops an expanding ring
+  and three falling notes (quiet, panned at the spot it left).
+- **Seven stars complete it.** At the seventh trust, a soft rising
+  chord plays and the stars join into a faint constellation line. The
+  piece teaches: staring loses, patience at the edge of attention wins.
+  No text anywhere; the hand learns it.
+- Mix guesses from item 1, still unheard by real ears: voice syllable
+  gain 0.18–0.30 → 0.13–0.22 plus a 2.1kHz lowpass to blunt the
+  sawtooth buzz. Everything else untouched.
+- Added `window.__nb` (beam/shy/stars/gains handle) for headless tests.
+
+Verified headless (Playwright/Chromium 390x844, no console errors):
+held the beam at lit≈0.31 → trust climbed to 3.5 → star earned; held
+full light → flee + echo ring, shy gain fell to ~0.001; beam-follow
+gains unregressed (water 1.0 under beam, birds at 0.015 floor).
+Screenshot shows the earned star persisting in the dark. Still NOT
+verified: real audio mix, real touch feel — that needs the human's
+phone and ears.
+
+Moved the stage to 3: the direction is now unambiguous — a patience
+game about the edge of attention, with reward, penalty, and an ending.
+
+Where to pick up next:
+1. Still: LISTEN on a real device. All balance choices remain guesses.
+2. The constellation could mean more — maybe its shape isn't random but
+   echoes something (the beam's own outline? a moth?). Only if it can
+   be done without contrivance.
+3. Attention tunneling (beam narrowing when still) remains parked, and
+   should stay parked until real ears approve the mix.
+4. Plant is still `classic`; a custom moth-ish plant.json would suit
+   this plot once the piece itself is at bloom.
