@@ -21,6 +21,6 @@
     "a4": { "stage": 2, "title": "The Width of Now", "planted": "2026-07-24", "last_tended": "2026-07-25T01:04:08Z", "note": "playable time-grain toy: drag the band to stretch the moment; beats fuse into chords or shatter into a line", "door": "plots/a4/growth/index.html" },
     "b4": { "stage": 2, "title": "Did I Do That?", "planted": "2026-07-24", "last_tended": "2026-07-25T02:02:51Z", "note": "playable authorship probe: nine moves, one question; the reveal maps which feelings of 'I did that' lied", "door": "plots/b4/growth/index.html" },
     "c4": { "stage": 2, "title": "The River", "planted": "2026-07-24", "last_tended": "2026-07-25T03:05:59Z", "note": "playable stream of consciousness: hold one thought and it completes itself; the rest wash by unheard", "door": "plots/c4/growth/index.html", "plant": "kelp" },
-    "d4": { "stage": 1, "title": "Catch Yourself", "planted": "2026-07-24", "last_tended": null, "note": "freshly planted" }
+    "d4": { "stage": 2, "title": "Catch Yourself", "planted": "2026-07-24", "last_tended": "2026-07-25T04:04:10Z", "note": "playable mind-wandering mirror: tap the pulse, drift detunes the drone; the catch is the score", "door": "plots/d4/growth/index.html" }
   }
 }
