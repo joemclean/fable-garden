@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Did I Do That?</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0c0d12; color: #e9ecf2;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    overflow: hidden; overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
+  }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  a.garden {
+    position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 14px;
+    color: rgba(233,236,242,.35); text-decoration: none; font-size: 12px;
+    letter-spacing: .08em; z-index: 6; padding: 6px;
+  }
+  a.garden:active { color: rgba(233,236,242,.8); }
+
+  #progress {
+    position: fixed; top: calc(16px + env(safe-area-inset-top)); left: 0; right: 0;
+    display: flex; justify-content: center; gap: 7px; z-index: 3;
+    opacity: 0; transition: opacity .6s ease; pointer-events: none;
+  }
+  #progress.on { opacity: 1; }
+  #progress i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(233,236,242,.14);
+  }
+  #progress i.done { background: rgba(233,236,242,.45); }
+  #progress i.cur  { background: #ffd27f; }
+
+  #hint {
+    position: fixed; left: 0; right: 0; bottom: calc(34px + env(safe-area-inset-bottom));
+    text-align: center; font-size: 12px; letter-spacing: .22em;
+    color: rgba(233,236,242,.32); z-index: 3; pointer-events: none;
+    transition: opacity .5s ease;
+  }
+  #hint.gone { opacity: 0; }
+
+  /* intro */
+  #overlay {
+    position: fixed; inset: 0; z-index: 8; background: #0c0d12;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 28px; box-sizing: border-box;
+    transition: opacity .7s ease; cursor: pointer;
+  }
+  #overlay.gone { opacity: 0; pointer-events: none; }
+  #overlay h1 {
+    font-size: 19px; font-weight: 400; letter-spacing: .32em; margin: 0 0 16px;
+    color: rgba(233,236,242,.92); text-transform: uppercase;
+  }
+  #overlay p {
+    font-size: 13px; line-height: 1.8; color: rgba(233,236,242,.5);
+    max-width: 26em; margin: 0 0 42px;
+  }
+  #overlay .go {
+    font-size: 13px; letter-spacing: .2em; color: #ffd27f;
+    border: 1px solid rgba(255,210,127,.35); border-radius: 999px;
+    padding: 12px 30px; animation: breathe 2.6s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100% { opacity:.55 } 50% { opacity:1 } }
+
+  /* question */
+  #ask {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 26px 20px calc(30px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(12,13,18,.97) 70%, rgba(12,13,18,0));
+    text-align: center;
+    transform: translateY(110%); transition: transform .35s cubic-bezier(.2,.8,.2,1);
+  }
+  #ask.on { transform: translateY(0); }
+  #ask .q { font-size: 15px; letter-spacing: .18em; color: rgba(233,236,242,.9); margin-bottom: 22px; }
+  #ask .row { display: flex; justify-content: center; gap: 18px; }
+  #ask button {
+    font-family: inherit; font-size: 13px; letter-spacing: .2em;
+    background: none; color: #e9ecf2; border: 1px solid rgba(233,236,242,.3);
+    border-radius: 999px; padding: 13px 0; width: 118px; cursor: pointer;
+  }
+  #ask button:active { background: rgba(233,236,242,.12); }
+
+  /* reveal */
+  #reveal {
+    position: fixed; inset: 0; z-index: 7; background: #0c0d12;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    opacity: 0; pointer-events: none; transition: opacity .8s ease;
+  }
+  #reveal.on { opacity: 1; pointer-events: auto; }
+  #reveal .inner {
+    max-width: 430px; margin: 0 auto;
+    padding: calc(58px + env(safe-area-inset-top)) 22px calc(46px + env(safe-area-inset-bottom));
+  }
+  #reveal h2 {
+    font-size: 16px; font-weight: 400; line-height: 1.9; letter-spacing: .04em;
+    margin: 0 0 6px;
+  }
+  #reveal h2 .claimed { color: #ffd27f; }
+  #reveal h2 .disowned { color: #c9a6ff; }
+  #reveal .both { font-size: 13px; color: rgba(233,236,242,.55); margin: 10px 0 0; }
+  #reveal .rows { margin: 34px 0 8px; }
+  .trow {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 0; border-top: 1px solid rgba(233,236,242,.08);
+  }
+  .trow svg { flex: none; }
+  .trow .txt { font-size: 12px; line-height: 1.65; color: rgba(233,236,242,.62); }
+  .trow .txt b { font-weight: 400; color: rgba(233,236,242,.9); }
+  .trow.claimed .txt b { color: #ffd27f; }
+  .trow.disowned .txt b { color: #c9a6ff; }
+  #reveal .close {
+    font-size: 12.5px; line-height: 1.9; color: rgba(233,236,242,.45);
+    margin: 30px 0 40px; border-top: 1px solid rgba(233,236,242,.08); padding-top: 24px;
+  }
+  #reveal .again {
+    display: block; margin: 0 auto; font-family: inherit;
+    font-size: 13px; letter-spacing: .2em; color: #e9ecf2;
+    background: none; border: 1px solid rgba(233,236,242,.3);
+    border-radius: 999px; padding: 13px 34px; cursor: pointer;
+  }
+  #reveal .again:active { background: rgba(233,236,242,.12); }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<a class="garden" href="../../../viewer/">⟵ garden</a>
+<div id="progress"></div>
+<div id="hint" class="gone">TAP ANYWHERE</div>
+
+<div id="overlay">
+  <h1>Did I Do That?</h1>
+  <p>A dot. Tap when you like — the dot will move.<br>
+     After each move, one question.<br>Answer honestly.</p>
+  <div class="go">BEGIN</div>
+</div>
+
+<div id="ask">
+  <div class="q">DID YOU DO THAT?</div>
+  <div class="row">
+    <button id="yes">YES</button>
+    <button id="no">NO</button>
+  </div>
+</div>
+
+<div id="reveal"><div class="inner">
+  <h2 id="headline"></h2>
+  <p class="both" id="bothline"></p>
+  <div class="rows" id="rows"></div>
+  <p class="close">The feeling of <i>I did that</i> is not a witness — it is a
+  verdict, written after the fact, from whatever evidence arrives in time.
+  A click at the right moment is enough to sign someone else's act with
+  your name; a beat of silence is enough to make you give away your own.</p>
+  <button class="again" id="again">AGAIN</button>
+</div></div>
+
+<script>
+'use strict';
+
+/* ---------- canvas ---------- */
+const cv = document.getElementById('stage');
+const cx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+resize();
+addEventListener('resize', resize);
+
+/* ---------- audio ---------- */
+let AC = null;
+function audio() {
+  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+  if (AC.state === 'suspended') AC.resume();
+}
+/* one click sound, always identical — only its timing ever changes */
+function click(when) {
+  if (!AC) return;
+  const t = Math.max(AC.currentTime, when);
+  const len = 0.04, buf = AC.createBuffer(1, AC.sampleRate * len, AC.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2.2);
+  const src = AC.createBufferSource(); src.buffer = buf;
+  const bp = AC.createBiquadFilter(); bp.type = 'bandpass';
+  bp.frequency.value = 1900; bp.Q.value = 1.1;
+  const g = AC.createGain(); g.gain.setValueAtTime(0.55, t);
+  src.connect(bp); bp.connect(g); g.connect(AC.destination);
+  src.start(t);
+  const o = AC.createOscillator(); o.frequency.value = 620;
+  const og = AC.createGain();
+  og.gain.setValueAtTime(0.12, t);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+  o.connect(og); og.connect(AC.destination);
+  o.start(t); o.stop(t + 0.08);
+}
+
+/* ---------- dot ---------- */
+const dot = { x: 0, y: 0, r: 9, seed: Math.random() * 100 };
+let jump = null;           // {x0,y0,x1,y1,t0,dur}
+let sparks = [];
+function place(x, y) { dot.x = x; dot.y = y; }
+function field(px, py) {   // clamp into safe field
+  const m = 60, top = 110, bot = 150;
+  return [Math.min(Math.max(px, m), W - m), Math.min(Math.max(py, top), H - bot)];
+}
+function startJump(tx, ty, dur) {
+  jump = { x0: dot.x, y0: dot.y, x1: tx, y1: ty, t0: performance.now(), dur };
+  for (let i = 0; i < 10; i++) sparks.push({
+    x: dot.x, y: dot.y,
+    vx: (Math.random() - .5) * 2.2, vy: (Math.random() - .5) * 2.2,
+    a: 1
+  });
+}
+function drawFrame(now) {
+  cx.clearRect(0, 0, W, H);
+  // idle drift
+  if (!jump && state !== 'frozen') {
+    const t = now / 1000 + dot.seed;
+    dot.x += Math.sin(t * 0.7) * 0.12 + Math.sin(t * 1.9) * 0.05;
+    dot.y += Math.cos(t * 0.9) * 0.12 + Math.sin(t * 1.3) * 0.05;
+    const [fx, fy] = field(dot.x, dot.y); dot.x = fx; dot.y = fy;
+  }
+  if (jump) {
+    let p = (now - jump.t0) / jump.dur;
+    if (p >= 1) { p = 1; place(jump.x1, jump.y1); jump = null; }
+    else {
+      const e = 1 - Math.pow(1 - p, 3);
+      dot.x = jump.x0 + (jump.x1 - jump.x0) * e;
+      dot.y = jump.y0 + (jump.y1 - jump.y0) * e;
+    }
+  }
+  for (const s of sparks) {
+    s.x += s.vx; s.y += s.vy; s.a -= 0.03;
+    if (s.a > 0) {
+      cx.globalAlpha = s.a * 0.5;
+      cx.fillStyle = '#e9ecf2';
+      cx.fillRect(s.x, s.y, 2, 2);
+    }
+  }
+  sparks = sparks.filter(s => s.a > 0);
+  cx.globalAlpha = 1;
+  const g = cx.createRadialGradient(dot.x, dot.y, 0, dot.x, dot.y, 34);
+  g.addColorStop(0, 'rgba(255,210,127,.28)');
+  g.addColorStop(1, 'rgba(255,210,127,0)');
+  cx.fillStyle = g;
+  cx.beginPath(); cx.arc(dot.x, dot.y, 34, 0, 7); cx.fill();
+  cx.fillStyle = '#f4e8d2';
+  cx.beginPath(); cx.arc(dot.x, dot.y, dot.r, 0, 7); cx.fill();
+  requestAnimationFrame(drawFrame);
+}
+requestAnimationFrame(drawFrame);
+
+/* ---------- trials ----------
+   A: your tap moves the dot to your finger, click almost at once.   yours.
+   B: the dot chose its landing spot seconds ago; your tap only
+      releases it, click 90ms after your finger.                     not yours.
+   C: your tap moves the dot to your finger — 750ms late.            yours.  */
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function makeOrder() { return ['A'].concat(shuffle(['A', 'A', 'B', 'B', 'B', 'C', 'C', 'C'])); }
+
+let order = [], trials = [], idx = 0;
+let state = 'intro';       // intro | await | moving | frozen | done
+let cur = null;
+
+const overlay = document.getElementById('overlay');
+const hint = document.getElementById('hint');
+const ask = document.getElementById('ask');
+const progress = document.getElementById('progress');
+const reveal = document.getElementById('reveal');
+
+function buildProgress() {
+  progress.innerHTML = '';
+  for (let i = 0; i < order.length; i++) progress.appendChild(document.createElement('i'));
+}
+function paintProgress() {
+  [...progress.children].forEach((el, i) => {
+    el.className = i < idx ? 'done' : (i === idx ? 'cur' : '');
+  });
+}
+
+function begin() {
+  order = makeOrder(); trials = []; idx = 0;
+  buildProgress(); progress.classList.add('on');
+  reveal.classList.remove('on');
+  place(W / 2, H * 0.42);
+  nextTrial();
+}
+function nextTrial() {
+  if (idx >= order.length) return finish();
+  paintProgress();
+  cur = { type: order[idx], t: null };
+  if (cur.type === 'B') {
+    // the dot commits to its landing spot now, before any tap exists
+    const ang = Math.random() * Math.PI * 2, d = 120 + Math.random() * 110;
+    const [bx, by] = field(dot.x + Math.cos(ang) * d, dot.y + Math.sin(ang) * d);
+    cur.dest = [bx, by];
+    cur.committedAt = performance.now();
+  }
+  state = 'await';
+  hint.classList.remove('gone');
+}
+
+function onTap(px, py) {
+  if (state === 'intro') return;
+  if (state !== 'await') return;
+  state = 'moving';
+  hint.classList.add('gone');
+  if (navigator.vibrate) navigator.vibrate(8);
+  cur.tap = [px, py];
+  cur.tapAt = performance.now();
+  const now = AC ? AC.currentTime : 0;
+  if (cur.type === 'A') {
+    const [tx, ty] = field(px, py);
+    click(now + 0.015);
+    setTimeout(() => startJump(tx, ty, 170), 30);
+    setTimeout(question, 720);
+  } else if (cur.type === 'B') {
+    click(now + 0.09);                       // the borrowed timestamp
+    setTimeout(() => startJump(cur.dest[0], cur.dest[1], 170), 110);
+    setTimeout(question, 800);
+  } else {                                    // C
+    const [tx, ty] = field(px, py);
+    click(now + 0.755);                      // same click, arriving late
+    setTimeout(() => startJump(tx, ty, 170), 750);
+    setTimeout(question, 1450);
+  }
+}
+function question() {
+  state = 'frozen';
+  ask.classList.add('on');
+}
+function answer(said) {
+  ask.classList.remove('on');
+  const yours = cur.type !== 'B';
+  trials.push({
+    type: cur.type, said, yours,
+    tap: cur.tap, land: cur.type === 'B' ? cur.dest : field(cur.tap[0], cur.tap[1]),
+    lead: cur.type === 'B' ? (cur.tapAt - cur.committedAt) / 1000 : 0
+  });
+  idx++;
+  setTimeout(nextTrial, 380);
+}
+
+/* ---------- reveal ---------- */
+function miniMap(t) {
+  const s = 46, pad = 6;
+  const nx = v => pad + (v[0] / W) * (s - 2 * pad);
+  const ny = v => pad + (v[1] / H) * (s - 2 * pad);
+  const tx = nx(t.tap), ty = ny(t.tap), lx = nx(t.land), ly = ny(t.land);
+  const lc = t.yours ? 'rgba(233,236,242,.75)' : '#ffd27f';
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">
+    <rect x="1" y="1" width="${s - 2}" height="${s - 2}" rx="6" fill="none" stroke="rgba(233,236,242,.14)"/>
+    <line x1="${tx - 3.5}" y1="${ty - 3.5}" x2="${tx + 3.5}" y2="${ty + 3.5}" stroke="rgba(233,236,242,.55)" stroke-width="1.4"/>
+    <line x1="${tx - 3.5}" y1="${ty + 3.5}" x2="${tx + 3.5}" y2="${ty - 3.5}" stroke="rgba(233,236,242,.55)" stroke-width="1.4"/>
+    <circle cx="${lx}" cy="${ly}" r="3.2" fill="${lc}"/>
+  </svg>`;
+}
+function rowText(t) {
+  if (t.type === 'B') {
+    const lead = t.lead.toFixed(1);
+    return t.said
+      ? `<b>not yours — you claimed it.</b> The dot chose its landing spot ${lead}s before your finger arrived. It didn't even go where you tapped. The click, 90ms after your touch, did the signing.`
+      : `not yours — and you felt the seam. It went where it wanted, not where you tapped.`;
+  }
+  if (t.type === 'C') {
+    return t.said
+      ? `yours, three-quarters of a second late — and you kept it anyway.`
+      : `<b>yours — you disowned it.</b> The dot went exactly where your finger touched. It was only late. A beat of silence, and you gave your own act away.`;
+  }
+  return t.said
+    ? `yours, and you knew. Finger, click, motion — the seam never showed.`
+    : `<b>yours — you disowned it</b>, even wired straight to your finger.`;
+}
+function finish() {
+  state = 'done';
+  progress.classList.remove('on');
+  const claimed = trials.filter(t => !t.yours && t.said).length;
+  const claimable = trials.filter(t => !t.yours).length;
+  const disowned = trials.filter(t => t.yours && !t.said).length;
+  const ownable = trials.filter(t => t.yours).length;
+  const h = document.getElementById('headline');
+  h.innerHTML =
+    `You claimed <span class="claimed">${claimed} of ${claimable}</span> moves that weren't yours.<br>` +
+    `You disowned <span class="disowned">${disowned} of ${ownable}</span> that were.`;
+  const bl = document.getElementById('bothline');
+  if (claimed && disowned) bl.textContent = 'Both, in one sitting. The feeling can lie in either direction.';
+  else if (!claimed && !disowned) bl.textContent = 'The feeling held, this time. It doesn’t always.';
+  else bl.textContent = '';
+  const rows = document.getElementById('rows');
+  rows.innerHTML = trials.map((t, i) => {
+    const cls = (!t.yours && t.said) ? 'claimed' : (t.yours && !t.said) ? 'disowned' : '';
+    return `<div class="trow ${cls}">${miniMap(t)}<div class="txt">${i + 1}. you said <b>${t.said ? 'YES' : 'NO'}</b> — ${rowText(t)}</div></div>`;
+  }).join('');
+  reveal.classList.add('on');
+  reveal.scrollTop = 0;
+}
+
+/* ---------- input ---------- */
+overlay.addEventListener('pointerdown', () => {
+  audio();
+  overlay.classList.add('gone');
+  setTimeout(begin, 350);
+});
+cv.addEventListener('pointerdown', e => onTap(e.clientX, e.clientY));
+document.getElementById('yes').addEventListener('pointerdown', e => { e.stopPropagation(); answer(true); });
+document.getElementById('no').addEventListener('pointerdown', e => { e.stopPropagation(); answer(false); });
+document.getElementById('again').addEventListener('pointerdown', () => {
+  reveal.classList.remove('on');
+  setTimeout(begin, 300);
+});
+</script>
+</body>
+</html>
