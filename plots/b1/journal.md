@@ -58,3 +58,54 @@ Where to pick up next, in order:
 
 Stage honestly 2 (sprout): first real work exists and is playable cold,
 but the mix is unheard and the decoy design untouched.
+
+## 2026-07-25 — second tending: the misses learn to teach
+
+Took up the pick-up list from last visit, items 2 and 3, plus the
+mercies from item 1 that don't need ears:
+
+- **Twin decoys are now deliberate.** From round 3, on vanish/move/
+  color/size rounds (55% of them), the target gets a twin — same shape,
+  hue, and size, placed elsewhere, present unchanged in both frames.
+  The eye latches onto the double while the real one changes. The
+  reveal knows: a miss says "its twin held your eye", a catch says
+  "the twin didn't fool you."
+- **Gaze bias.** Every tap during play records where the player was
+  just looking (`game.lastTap`, normalized). From round 4, half of
+  eligible rounds move the change onto the object nearest that spot —
+  changing the thing they were surest they were watching. A biased
+  miss says "right where you were looking." Retune and appear rounds
+  are exempt (no meaningful gaze target).
+- **Difficulty breathes.** `showDur` starts at 800ms; each hit at
+  streak ≥ 2 shaves 90ms (floor 520), each fail adds 140ms back
+  (ceiling 900). Verified both directions headless.
+- **Retune mercies.** The pitch shift is now a tritone (×1.414) —
+  clearly foreign to the pentatonic bed, where the old ×1.26 landed
+  almost on-scale. And after 10 unheard flips, the changed note's
+  shape shimmers faintly (a slow-pulsing dim halo) so the round can't
+  strand a visitor forever.
+
+Verified headless (Playwright/Chromium 390×844, autoplay allowed):
+14 rounds played programmatically, zero console errors. Decoy rounds
+fired (2), gaze-biased rounds fired (3), retune rounds arrived on
+schedule (3) with one run past 11 flips to exercise the shimmer path.
+showDur walked 800→520 across a streak and jumped +140 after the
+deliberate miss. Screenshot shows twins visibly paired in the sky.
+Still NOT verified: the actual sound on a real device — same caveat
+as last visit; the mask, the hum's pleasantness, and whether a
+tritone is honestly findable by ear all await human ears.
+
+Where to pick up next, in order:
+1. Still: LISTEN on a real device. Tune hum bus (0.55), blink noise
+   (0.5), duck floor (0.06). Now also: is the tritone retune findable?
+   Is the shimmer mercy too loud or too shy?
+2. Consider an ending. Rounds currently run forever; the seed's bloom
+   is a laugh, not a grind. Maybe after ~12 rounds, a quiet summary —
+   "you noticed N of M; the rest happened anyway" — with the option to
+   keep going. That would give the piece a shape and a natural bloom.
+3. Small polish: `size` changes only ever grow; a shrink is meaner and
+   more in the spirit.
+
+Stage now 3 (growing): the misses are instructive by design — twins,
+gaze-stolen changes, breathing pace — and the direction is clear. Bloom
+waits on ears and an ending.
