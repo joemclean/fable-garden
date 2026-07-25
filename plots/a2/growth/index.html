@@ -53,6 +53,29 @@
     color: #3d4556; text-decoration: none; opacity: .8;
   }
   #back:hover { color: #8a93a6; }
+  #reveal {
+    position: fixed; inset: 0; z-index: 9;
+    background: rgba(10,12,16,0.94);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 0 32px;
+    opacity: 0; pointer-events: none; transition: opacity .9s ease;
+  }
+  #reveal.on { opacity: 1; pointer-events: auto; }
+  #reveal .rv-title {
+    font-size: 13px; letter-spacing: 4px; text-transform: uppercase;
+    color: #6d7789; margin-bottom: 30px;
+  }
+  #reveal .rv-line { font-size: 18px; line-height: 1.6; color: #cfd6e4; margin: 10px 0; }
+  #reveal .rv-line .n { color: #ebd7a0; }
+  #reveal .rv-bar {
+    width: 180px; height: 3px; margin: 6px auto 18px;
+    background: #1a1f2a; border-radius: 2px; overflow: hidden;
+  }
+  #reveal .rv-bar i { display: block; height: 100%; background: #ebd7a0; opacity: .7; }
+  #reveal .go2 {
+    margin-top: 40px; font-size: 12px; letter-spacing: 4px; text-transform: uppercase;
+    color: #6d7789; animation: breathe 3s ease-in-out infinite;
+  }
 </style>
 
 <canvas id="stage"></canvas>
@@ -67,6 +90,11 @@
   <p>Hold your finger down and wander. Let go where it feels right &mdash; before you're sure.</p>
   <div class="go">touch to begin</div>
   <div class="hp">sound on &middot; headphones help</div>
+</div>
+<div id="reveal">
+  <div class="rv-title">a breath, before going on</div>
+  <div id="rv-body"></div>
+  <div class="go2">touch to continue</div>
 </div>
 <a id="back" href="../../../viewer/">garden</a>
 
@@ -95,10 +123,14 @@ let hitRadius = 0;
 let holding = false;
 let holdStart = 0;
 let finger = { x: 0, y: 0 };
-let score = 0, streak = 0, best = 0;
+let score = 0, streak = 0;
+let best = parseInt(localStorage.getItem('a2-best') || '0', 10) || 0;
 let resting = false;         // brief pause after a commit
+let revealing = false;       // the hesitation mirror is up
+let commits = [];            // {held, hit} — the player's own hesitation curve
 let effects = [];            // transient rings / blooms
 let audioReady = false;
+const EARLY_S = 2.2;         // letting go before this counts as trusting early
 
 const scoreEl = document.getElementById('score');
 const streakEl = document.getElementById('streak');
@@ -110,8 +142,14 @@ function newRound() {
     x: (m + Math.random() * (1 - 2 * m)) * W,
     y: (m + Math.random() * (1 - 2 * m)) * H
   };
-  hitRadius = Math.min(W, H) * 0.15;
+  // trust has to deepen: the mark tightens as the streak grows
+  hitRadius = Math.min(W, H) * 0.15 * (1 - Math.min(streak, 6) * 0.06);
   resting = false;
+}
+
+function signalFade() {
+  // the cue recedes as you prove trustworthy; a miss brings it back
+  return 1 - Math.min(streak, 6) * 0.075;
 }
 
 function nearness(x, y) {
@@ -174,7 +212,7 @@ function initAudio() {
 function audioListen(on) {
   if (!audioReady) return;
   const t = AC.currentTime;
-  droneGain.gain.setTargetAtTime(on ? 0.085 : 0, t, on ? 0.15 : 0.25);
+  droneGain.gain.setTargetAtTime(on ? 0.085 * signalFade() : 0, t, on ? 0.15 : 0.25);
   noiseGain.gain.setTargetAtTime(on ? 0.018 : 0, t, on ? 0.3 : 0.25);
   if (!on) shimGain.gain.setTargetAtTime(0, t, 0.15);
 }
@@ -185,7 +223,7 @@ function audioTrack(n) {
   const t = AC.currentTime;
   const beat = 0.15 + (1 - n) * (1 - n) * 5.2;   // Hz of beating: ~5.4 far, ~0.15 at target
   oscB.frequency.setTargetAtTime(108 + beat, t, 0.12);
-  shimGain.gain.setTargetAtTime(Math.pow(n, 3) * 0.045, t, 0.2);
+  shimGain.gain.setTargetAtTime(Math.pow(n, 3) * 0.045 * signalFade(), t, 0.2);
   noiseFilter.frequency.setTargetAtTime(300 + n * n * 1100, t, 0.2);
 }
 
@@ -236,7 +274,7 @@ overlay.addEventListener('pointerdown', begin);
 function pointerPos(e) { return { x: e.clientX, y: e.clientY }; }
 
 window.addEventListener('pointerdown', e => {
-  if (!started || resting || holding) return;
+  if (!started || resting || holding || revealing) return;
   if (e.target.id === 'back' || overlay.contains(e.target)) return;
   holding = true;
   holdStart = performance.now();
@@ -268,9 +306,13 @@ function commit(x, y) {
   resting = true;
   const d = Math.hypot(x - target.x, y - target.y);
   const mult = currentMult();
-  if (d <= hitRadius) {
+  const held = (performance.now() - holdStart) / 1000;
+  const hit = d <= hitRadius;
+  commits.push({ held, hit });
+  if (hit) {
     const pts = Math.round(100 * mult);
-    score += pts; streak += 1; best = Math.max(best, streak);
+    score += pts; streak += 1;
+    if (streak > best) { best = streak; localStorage.setItem('a2-best', best); }
     chime(streak - 1);
     effects.push({ kind: 'bloom', x, y, t0: performance.now(), pts });
   } else {
@@ -282,8 +324,40 @@ function commit(x, y) {
   }
   scoreEl.textContent = score;
   streakEl.textContent = streak >= 2 ? streak + ' in a row' : (best >= 3 && streak === 0 ? 'best ' + best : '');
-  setTimeout(newRound, 1100);
+  if (commits.length % 9 === 0) setTimeout(showReveal, 1300);
+  else setTimeout(newRound, 1100);
 }
+
+// ---------- the hesitation mirror ----------
+// Every nine commits, show the player their own curve: how often they
+// were right when they let go early, how often when they waited.
+// Numbers only. What happened, never why.
+const revealEl = document.getElementById('reveal');
+const rvBody = document.getElementById('rv-body');
+
+function showReveal() {
+  const nine = commits.slice(-9);
+  const early = nine.filter(c => c.held < EARLY_S);
+  const late = nine.filter(c => c.held >= EARLY_S);
+  const row = (label, arr) => {
+    if (!arr.length) return '<div class="rv-line">' + label + ' &mdash; you never did</div>';
+    const h = arr.filter(c => c.hit).length;
+    return '<div class="rv-line">' + label + ' &mdash; right <span class="n">' + h +
+      ' of ' + arr.length + '</span></div>' +
+      '<div class="rv-bar"><i style="width:' + Math.round(100 * h / arr.length) + '%"></i></div>';
+  };
+  rvBody.innerHTML =
+    row('when you let go early', early) +
+    row('when you waited to be sure', late);
+  revealing = true;
+  revealEl.classList.add('on');
+}
+
+revealEl.addEventListener('pointerdown', () => {
+  if (!revealing) return;
+  revealEl.classList.remove('on');
+  setTimeout(() => { revealing = false; newRound(); }, 450);
+});
 
 // ---------- drawing ----------
 // The dust is scenery. It knows nothing.
