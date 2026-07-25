@@ -67,16 +67,21 @@ window.addEventListener('resize', resize);
 resize();
 
 /* ---------- breath ---------- */
-// one slow cycle: 4.2s in, 5.8s out
+// one slow cycle: 4.2s in, 5.8s out — and when depth is held for minutes,
+// the whole cycle quietly lengthens, the way real breath does as you settle.
+// phase-based so the cycle can stretch without the light ever jumping.
 const T_IN = 4.2, T_OUT = 5.8, T_CYCLE = T_IN + T_OUT;
+const F_IN = T_IN / T_CYCLE;
 const ease = x => x * x * (3 - 2 * x);
-function breathAt(t) {
-  const p = ((t % T_CYCLE) + T_CYCLE) % T_CYCLE;
-  if (p < T_IN) {
-    return { breath: ease(p / T_IN), rising: true, edge: Math.min(p, T_IN - p) };
+let bPhase = 0;      // 0..1 through the current cycle
+let cycScale = 1;    // 1 -> ~1.3 with long-held depth
+function breathNow() {
+  const ph = bPhase, secs = T_CYCLE * cycScale;
+  if (ph < F_IN) {
+    return { breath: ease(ph / F_IN), rising: true, edge: Math.min(ph, F_IN - ph) * secs };
   }
-  const q = (p - T_IN) / T_OUT;
-  return { breath: 1 - ease(q), rising: false, edge: Math.min(p - T_IN, T_CYCLE - p) };
+  const q = (ph - F_IN) / (1 - F_IN);
+  return { breath: 1 - ease(q), rising: false, edge: Math.min(ph - F_IN, 1 - ph) * secs };
 }
 
 /* ---------- state ---------- */
@@ -90,6 +95,11 @@ let attune = 0;             // 0..1 — how deeply you're riding the body
 let attSm = 0;              // smoothed, drives sound colour
 let hearth = 1;             // heart audibility — keeps slipping unless attended
 let idleHintShown = false;
+let deep = 0;               // seconds spent genuinely deep — stretches the cycle
+let afterT = 0;             // sustained depth beyond the last milestone
+let listening = false;      // the coda: holding is no longer asked for
+let listenT = 0;
+let saidFinal = false;
 
 /* milestones */
 const words = [
@@ -250,8 +260,8 @@ function frame() {
   const dt = Math.min(now - lastT, 0.1);
   lastT = now;
 
-  const bt = started && ac ? ac.currentTime : now;
-  const b = breathAt(bt);
+  bPhase = (bPhase + dt / (T_CYCLE * cycScale)) % 1;
+  const b = breathNow();
 
   if (started) {
     // alignment: pressing on the in-breath, resting on the out-breath.
@@ -260,7 +270,10 @@ function frame() {
     const good = pressed === b.rising;
     const align = good ? 0.5 + 0.5 * grace : 0.5 - 0.5 * grace;
 
-    if (now - lastTouchAt > 12) {
+    if (listening) {
+      // the coda: nothing is asked anymore. the duet carries itself.
+      attune = Math.min(1, attune + dt * 0.02);
+    } else if (now - lastTouchAt > 12) {
       // thumb long gone: the duet quietly waits
       attune = Math.max(0, attune - dt * 0.03);
       if (!idleHintShown && attune < 0.1) {
@@ -274,33 +287,53 @@ function frame() {
     }
     attSm += (attune - attSm) * Math.min(1, dt * 0.8);
 
-    // the heart keeps trying to slip below notice; attention brings it back
+    // minutes of real depth let the whole cycle lengthen — calm begets
+    // slower calm. losing depth lets it drift back, twice as slowly.
+    if (attune > 0.6) deep = Math.min(deep + dt, 180);
+    else deep = Math.max(0, deep - dt * 0.5);
+    cycScale = 1 + 0.22 * ease(deep / 180)
+                 + (listening ? 0.08 * Math.min(listenT / 75, 1) : 0);
+
+    // the heart keeps trying to slip below notice; attention brings it
+    // back — and in the coda it finally stops slipping at all
     hearth -= dt / 45;
     if (attune > 0.45 && align > 0.5) hearth += dt / 6;
+    if (listening) hearth += dt / 8;
     hearth = Math.max(0.15, Math.min(1, hearth));
 
-    // it slows when you listen
-    bpm = 68 - 16 * attSm;
+    // it slows when you listen — and settles further in the coda
+    bpm = 68 - 16 * attSm - (listening ? 4 * Math.min(listenT / 60, 1) : 0);
 
     // audio follows
     const hg = (0.30 + 0.70 * hearth) * (0.55 + 0.45 * attSm);
     heartLevel.gain.setTargetAtTime(hg, ac.currentTime, 0.4);
     heartLP.frequency.setTargetAtTime(180 + 160 * attSm, ac.currentTime, 0.6);
     // breath sound: air moving, loudest mid-swing, opens with depth
-    const flow = good || !pressed ? 1 : 0.6;
+    const flow = listening || good || !pressed ? 1 : 0.6;
     const bAmt = attSm > 0.2 ? (attSm - 0.2) / 0.8 : 0;
     const bGain = bAmt * 0.10 * (0.25 + 0.75 * Math.sin(Math.PI * b.breath)) * flow;
     breathGain.gain.setTargetAtTime(bGain, ac.currentTime, 0.25);
     breathBP.frequency.setTargetAtTime(380 + 420 * b.breath, ac.currentTime, 0.3);
-    // shimmer only at real depth
+    // shimmer only at real depth; the coda opens it a breath wider
     const sAmt = attSm > 0.75 ? (attSm - 0.75) / 0.25 : 0;
-    shimmerGain.gain.setTargetAtTime(sAmt * 0.011, ac.currentTime, 1.2);
+    shimmerGain.gain.setTargetAtTime(sAmt * (listening ? 0.015 : 0.011), ac.currentTime, 1.2);
 
     // milestones want sustained depth, not a spike
     for (const w of words) {
       if (w.done) continue;
       if (attune >= w.need) { w.t += dt; if (w.t >= w.hold) { w.done = true; say(w.text); } }
       else w.t = Math.max(0, w.t - dt * 2);
+    }
+
+    // past the last milestone, staying deep earns the coda: the one
+    // instruction this piece ever gave is finally taken away.
+    if (!listening && words[2].done) {
+      if (attune >= 0.8) afterT += dt; else afterT = Math.max(0, afterT - dt);
+      if (afterT >= 20) { listening = true; say('you can let go now. just listen.'); }
+    }
+    if (listening) {
+      listenT += dt;
+      if (!saidFinal && listenT >= 75) { saidFinal = true; say('this was always here.'); }
     }
   }
 
@@ -342,10 +375,12 @@ function frame() {
   cx2d.fillStyle = g;
   cx2d.beginPath(); cx2d.arc(cxp, cyp, r, 0, Math.PI * 2); cx2d.fill();
 
-  // rings that appear as you go deeper — the body's finer grain
+  // rings that appear as you go deeper — the body's finer grain.
+  // in the coda two more surface, very faint: the room itself listening.
   if (attSm > 0.15) {
     const ringA = (attSm - 0.15) / 0.85;
-    for (let i = 1; i <= 3; i++) {
+    const nRings = listening ? 3 + Math.min(2, Math.floor(listenT / 20)) : 3;
+    for (let i = 1; i <= nRings; i++) {
       const rr = r * (1 + i * 0.42) * (1 + 0.02 * pulse);
       cx2d.strokeStyle = `rgba(${cr},${cg},${cb},${0.10 * ringA / i})`;
       cx2d.lineWidth = 1;

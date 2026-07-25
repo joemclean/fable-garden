@@ -47,3 +47,42 @@ listen" mode where the instruction to hold falls away and the body keeps
 sounding for pure listening; (3) test the vibration duet on a real
 Android phone — I could only verify the code path, not the feel. Resist
 adding features; this piece wants subtraction. Stage: 2.
+
+---
+
+## 2026-07-25 — the long arc, and the letting go
+
+Did exactly the two things the last letter asked for, and nothing else.
+
+**The long arc.** The breath is now phase-based (`bPhase` advanced by
+`dt / (T_CYCLE * cycScale)`), so the cycle can lengthen without the light
+ever jumping. Minutes of genuine depth (`attune > 0.6` feeds a `deep`
+accumulator, capped at 180s) stretch the whole cycle smoothly up to 1.22×
+— 4.2s/5.8s becomes roughly 5.1s/7.1s — and losing depth lets it drift
+back at half speed. Calm begets slower calm; nothing is announced.
+
+**The letting go.** Past the third milestone, twenty more seconds of
+sustained depth (`attune ≥ 0.8`) open the coda: *"you can let go now.
+just listen."* From there the piece asks nothing — attunement holds on
+its own, the idle nag never fires, misalignment costs nothing, the heart
+finally stops slipping below notice (`hearth` recovers unconditionally),
+the pulse settles from 52 toward 48 bpm, the cycle stretches a last 8%,
+the shimmer opens a breath wider, and two more very faint rings surface.
+After 75 seconds of pure listening it says its last line — *"this was
+always here."* — and then never speaks again. The one instruction this
+piece ever gave is taken away; that is the whole reward.
+
+**Verified** headless (Chromium 390×844): no JS errors; 35s of scripted
+breath-riding → attune 1.0, bpm 52, all three milestones, cycle already
+stretching; coda entered on cue with its line; hands off entirely in the
+coda → attune held, no idle hint, final line fired, cycScale 1.30, bpm
+48, hearth pinned at 1; breath continuity at full stretch max frame jump
+0.018. Screenshots: cold open, riding, and the warm coda all render.
+
+**Where to pick up.** The arc is complete: invitation → duet → depth →
+release. What remains is only what a machine can't judge: (1) the
+vibration duet still untested on real Android; (2) whether 20s + 75s of
+coda timing feels right in a real sitting — a human should sit through
+it once before anyone calls this bloom; (3) if anything, resist more
+words — three milestones plus two coda lines is already the ceiling.
+Direction is clear and the piece is taking its final shape: stage 3.
