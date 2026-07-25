@@ -47,7 +47,32 @@ const S = {
   stun: 0,               // seconds of knockback remaining
   glow: null,            // {x,y,t} catch ripple
   lastStep: 0,
+  lastPing: -9999,       // ms timestamp of last sonar tap
+  pinged: false,         // has the player ever pinged?
+  ripple: null,          // {t} faint outgoing ping ring
 };
+
+// stars persist across visits: the constellation is the plot's memory
+function loadStars() {
+  try {
+    const raw = localStorage.getItem('d1-stars');
+    if (!raw) return;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return;
+    const born = performance.now() - 60000; // old stars render at their floor glow
+    for (const s of arr.slice(-240)) {
+      if (typeof s.x === 'number' && typeof s.y === 'number')
+        S.stars.push({ x: s.x, y: s.y, born });
+    }
+  } catch (e) {}
+}
+function saveStars() {
+  try {
+    localStorage.setItem('d1-stars',
+      JSON.stringify(S.stars.slice(-240).map(s => ({ x: s.x, y: s.y }))));
+  } catch (e) {}
+}
+loadStars();
 
 const cv = document.getElementById('cv');
 const g2 = cv.getContext('2d');
@@ -187,6 +212,89 @@ function crack() { // false twin dissolving: dry, short, unrewarding
   n.connect(hp); hp.connect(g); g.connect(master); n.start(t0);
 }
 
+// ---------- sonar: tap once, the room answers ----------
+const clampPan = v => Math.max(-1, Math.min(1, v));
+
+function pingClick(t0) { // the outgoing tick: dry, small, yours
+  const nbuf = AC.createBuffer(1, AC.sampleRate * 0.03, AC.sampleRate);
+  const d = nbuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const n = AC.createBufferSource(); n.buffer = nbuf;
+  const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
+  const g = AC.createGain(); g.gain.value = 0.22;
+  n.connect(hp); hp.connect(g); g.connect(master); n.start(t0);
+}
+
+// one returning echo: place decides delay/pan/pitch, kind decides timbre
+function scheduleEcho(pos, kind) {
+  const p = S.player;
+  const norm = dist(p, pos) / Math.hypot(W, H); // 0..~1 across the room
+  const t0 = AC.currentTime + 0.13 + norm * 0.85;
+  const loud = Math.max(0.06, 1 - norm * 0.85);
+  const rel = pos.y - p.y;
+  const f = pitchFor(rel);
+  const panV = clampPan((pos.x - p.x) * W / (W * 0.45));
+  const pan = AC.createStereoPanner ? AC.createStereoPanner() : null;
+  const out = pan || master;
+  if (pan) { pan.pan.value = panV; pan.connect(master); }
+
+  const o = AC.createOscillator(), g = AC.createGain();
+  g.gain.setValueAtTime(0, t0);
+  o.connect(g); g.connect(out);
+
+  if (kind === 'wall') { // muffled knock: the room's edge, matter not voice
+    o.type = 'sine'; o.frequency.value = f * 0.5;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.value = 500 + loud * 700;
+    g.disconnect(); g.connect(lp); lp.connect(out);
+    g.gain.linearRampToValueAtTime(0.11 * loud, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.22);
+    o.start(t0); o.stop(t0 + 0.25);
+  } else if (kind === 'voice') { // the voice answers in its own pure tone
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.linearRampToValueAtTime(0.20 * loud, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.6);
+    const sh = AC.createOscillator(), shG = AC.createGain();
+    sh.type = 'sine'; sh.frequency.value = f * 3;
+    shG.gain.setValueAtTime(0, t0);
+    shG.gain.linearRampToValueAtTime(0.035 * loud, t0 + 0.02);
+    shG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.45);
+    sh.connect(shG); shG.connect(out);
+    sh.start(t0); sh.stop(t0 + 0.7);
+    o.start(t0); o.stop(t0 + 0.7);
+  } else if (kind === 'twin') { // the burr survives even in the echo
+    o.type = 'sine'; o.frequency.value = f;
+    const trem = AC.createOscillator(), tg = AC.createGain();
+    trem.type = 'square'; trem.frequency.value = 26; tg.gain.value = 0.12 * loud;
+    trem.connect(tg); tg.connect(g.gain); trem.start(t0); trem.stop(t0 + 0.6);
+    g.gain.linearRampToValueAtTime(0.16 * loud, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.5);
+    o.start(t0); o.stop(t0 + 0.6);
+  } else { // growl: a low rasp answers from the dark
+    o.type = 'sawtooth'; o.frequency.value = 61 * 2;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300;
+    g.disconnect(); g.connect(lp); lp.connect(out);
+    g.gain.linearRampToValueAtTime(0.17 * loud, t0 + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.3);
+    o.start(t0); o.stop(t0 + 0.35);
+  }
+}
+
+function ping(now) {
+  if (now - S.lastPing < 1400) return;
+  S.lastPing = now; S.pinged = true;
+  const p = S.player;
+  pingClick(AC.currentTime);
+  scheduleEcho({ x: 0.0, y: p.y }, 'wall');
+  scheduleEcho({ x: 1.0, y: p.y }, 'wall');
+  scheduleEcho({ x: p.x, y: 0.0 }, 'wall');
+  scheduleEcho({ x: p.x, y: 1.0 }, 'wall');
+  if (S.target) scheduleEcho(S.target, 'voice');
+  if (S.twin) scheduleEcho(S.twin, 'twin');
+  S.hazards.forEach(h => scheduleEcho(h, 'growl'));
+  S.ripple = { t: 0 };
+}
+
 function footstep() {
   const t0 = AC.currentTime;
   const nbuf = AC.createBuffer(1, AC.sampleRate * 0.05, AC.sampleRate);
@@ -242,6 +350,7 @@ function catchTarget() {
   chime(pitchFor(rel));
   if (navigator.vibrate) navigator.vibrate(35);
   S.stars.push({ x: S.target.x, y: S.target.y, born: performance.now() });
+  saveStars();
   S.glow = { x: t.x, y: t.y, t: 0 };
   S.round++;
   document.getElementById('hint').style.opacity = 0;
@@ -249,19 +358,28 @@ function catchTarget() {
 }
 
 // ---------- input: relative drag = drift ----------
-const stick = { on: false, ox: 0, oy: 0, dx: 0, dy: 0 };
+const stick = { on: false, ox: 0, oy: 0, dx: 0, dy: 0, t0: 0, moved: 0 };
 const keys = {};
 cv.addEventListener('pointerdown', e => {
-  stick.on = true; stick.ox = e.clientX; stick.oy = e.clientY; stick.dx = stick.dy = 0;
+  stick.on = true; stick.ox = e.clientX; stick.oy = e.clientY;
+  stick.dx = stick.dy = stick.moved = 0; stick.t0 = performance.now();
 });
 cv.addEventListener('pointermove', e => {
   if (!stick.on) return;
   stick.dx = e.clientX - stick.ox; stick.dy = e.clientY - stick.oy;
+  stick.moved = Math.max(stick.moved, Math.hypot(stick.dx, stick.dy));
 });
-const stickOff = () => { stick.on = false; stick.dx = stick.dy = 0; };
-cv.addEventListener('pointerup', stickOff);
-cv.addEventListener('pointercancel', stickOff);
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+cv.addEventListener('pointerup', () => {
+  // a still, brief touch is not a drift — it's a question. The room answers.
+  if (stick.on && S.started && AC &&
+      performance.now() - stick.t0 < 280 && stick.moved < 12) ping(performance.now());
+  stick.on = false; stick.dx = stick.dy = 0;
+});
+cv.addEventListener('pointercancel', () => { stick.on = false; stick.dx = stick.dy = 0; });
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ' ' && S.started && AC) ping(performance.now());
+});
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
 // ---------- start ----------
@@ -272,8 +390,15 @@ document.getElementById('veil').addEventListener('pointerdown', () => {
   master = AC.createGain(); master.gain.value = 0.9; master.connect(AC.destination);
   AC.resume();
   document.getElementById('veil').classList.add('gone');
-  setTimeout(() => { document.getElementById('hint').style.opacity = 0.9; }, 1800);
-  setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 9000);
+  const hint = document.getElementById('hint');
+  setTimeout(() => { hint.style.opacity = 0.9; }, 1800);
+  setTimeout(() => { hint.style.opacity = 0; }, 9000);
+  setTimeout(() => { // second lesson, only if they haven't found it themselves
+    if (S.pinged) return;
+    hint.textContent = 'tap once, and hold still — the room answers';
+    hint.style.opacity = 0.9;
+    setTimeout(() => { hint.style.opacity = 0; }, 7000);
+  }, 12000);
   startRound();
 });
 document.addEventListener('visibilitychange', () => {
@@ -386,6 +511,20 @@ function draw(now) {
       g2.strokeStyle = `rgba(235,230,215,${a.toFixed(3)})`;
       g2.lineWidth = 1;
       g2.beginPath(); g2.arc(S.glow.x, S.glow.y, r, 0, Math.PI * 2); g2.stroke();
+    }
+  }
+
+  // ping ripple: the question you asked, leaving you
+  if (S.ripple) {
+    S.ripple.t += 1 / 60;
+    const r = S.ripple.t * MIN * 0.9;
+    const a = Math.max(0, 0.09 - S.ripple.t * 0.09);
+    if (a <= 0) S.ripple = null;
+    else {
+      const q = px(S.player);
+      g2.strokeStyle = `rgba(235,230,215,${a.toFixed(3)})`;
+      g2.lineWidth = 1;
+      g2.beginPath(); g2.arc(q.x, q.y, r, 0, Math.PI * 2); g2.stroke();
     }
   }
 
