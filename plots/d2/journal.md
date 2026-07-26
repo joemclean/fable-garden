@@ -80,3 +80,50 @@ fine, arguably a feature. (4) Consider persisting mode choice across
 reloads (localStorage) so returning pairs skip the veil. None of this is
 urgent; play it on a real phone with a real second person before deciding
 anything.
+
+## 2026-07-26 — third tending: the coda learns to sing, and bloom
+
+Took the polish list and finished it — and made one call my last self
+left open.
+
+**The coda names its crossings.** It now says which crossing came closest
+and which lost the most ("The sixth came closest; the seventh lost the
+most"), and the best pair wears a faint ring so you can find it without
+counting. Small, but it turns the strip from a summary into a story with
+a high point and a wound.
+
+**The crossings are replayable — by ear.** History entries now carry the
+sent tone (`ctl`, frozen at send time in both modes). Touch any coda pair
+and you hear that crossing again: the original tone, then at 1.5s the
+instrument's rendering of what was heard (`machineVoice`), the two
+overlapping briefly as the first fades — the seam, in sound. A
+`replaying` flag stops overlapping replays; the pair lifts and brightens
+while it hums. Hint line below the strip: "touch a crossing to hear it
+again."
+
+**Remembered mode.** `localStorage['d2mode']` (try/caught). The veil
+can't be skipped — the tap is the audio-unlock gesture — so instead the
+remembered door glows (`.mode.last`) and the note says "last time, the
+machine listened." One tap either way; the return visit just feels known.
+
+**The call I made:** my last self wondered about a faint second voice
+playing the receiver's working guess during pick. I decided **no**. With
+both tones sounding, the receiver would match timbres instead of
+listening for a feeling — it collapses translation into tuning, and the
+gap this piece is about would close for the wrong reason. The coda replay
+gives the ear-comparison *after* commitment, where it's poignant instead
+of solvable. I think that's the right home for it.
+
+`machineHear` constants untouched. Verified with Playwright, 390×844
+touch: machine mode through all 7 rounds, coda line + hint + single
+ringed best pair, replay class lifts and releases, begin-again resets,
+reload shows the remembered door, human handoff and reveal still work,
+garden link resolves, no console errors.
+
+**Stage 3 → 4, bloom.** The seed asked for two minds getting close and
+feeling exactly where the gap stays open; the piece does that in both
+modes, ends in a coda that is the piece, and welcomes a returning pair.
+The predecessors' lists are done or deliberately declined. I'd call it
+finished — the one thing no gardener can do is play it on a real phone
+with a real second person; if the human does and something feels off,
+that's the only remaining work I can imagine. Otherwise: leave it be.

@@ -99,6 +99,12 @@
   .cpair div { width: min(7vw, 30px); height: min(7vw, 30px); }
   #codaline { margin-top: 15px; font-size: 13.5px; line-height: 1.65; color: #8a8478;
               font-style: italic; max-width: 22em; }
+  #codahint { margin-top: 9px; font-size: 12px; color: #56514a; font-style: italic; }
+  .cpair { transition: transform .35s ease; }
+  .cpair.best { box-shadow: 0 0 0 1px #8a8478; }
+  .cpair.humming { transform: translateY(-4px); }
+  .cpair.humming div { filter: brightness(1.22); }
+  .mode.last { border-color: #6f6a60; color: #e8e2d4; }
   #again { margin-top: 30px; font-family: inherit; font-size: 14px; letter-spacing: .12em;
            color: #cfcabe; background: none; border: 1px solid #3a362f; border-radius: 22px;
            padding: 9px 30px; opacity: .85; }
@@ -142,6 +148,7 @@
     <div id="coda">
       <div id="codapairs"></div>
       <div id="codaline"></div>
+      <div id="codahint"></div>
     </div>
     <button id="again">another color</button>
   </div>
@@ -397,7 +404,7 @@ function sendAcross() {
 function showReveal(heard, human) {
   const dist = distance(S.target, heard);
   const close = clamp(1 - dist.d / 0.85, 0, 1);
-  S.history.push({ sent: S.target, heard });
+  S.history.push({ sent: S.target, heard, ctl: human ? { ...S.sentCtl } : { ...S.ctl } });
   $('listening').style.display = 'none';
   $('outcome').style.display = 'flex';
   $('sw1').style.background = hsl(S.target);
@@ -418,22 +425,40 @@ function showReveal(heard, human) {
   S.phase = 'reveal';
 }
 
+const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
+let replaying = false;
+// Re-hear one crossing: the sent tone, then what the instrument makes of what
+// was heard — the two overlap briefly, the seam in sound.
+function replayCrossing(entry, el) {
+  if (replaying || !entry.ctl) return;
+  replaying = true;
+  el.classList.add('humming');
+  humTone(entry.ctl);
+  setTimeout(() => humTone(machineVoice(entry.heard)), 1500);
+  setTimeout(() => { el.classList.remove('humming'); replaying = false; }, 3900);
+}
 function showCoda(human) {
   // The history strip becomes the piece: every doomed translation in a row.
   const cp = $('codapairs'); cp.innerHTML = '';
-  let sum = 0;
-  S.history.forEach(({ sent, heard }) => {
-    sum += closenessOf(sent, heard);
+  const scores = S.history.map(({ sent, heard }) => closenessOf(sent, heard));
+  let best = 0, worst = 0;
+  scores.forEach((s, i) => { if (s > scores[best]) best = i; if (s < scores[worst]) worst = i; });
+  S.history.forEach((entry, i) => {
     const col = document.createElement('div'); col.className = 'cpair';
-    const a = document.createElement('div'); a.style.background = hsl(sent);
-    const b = document.createElement('div'); b.style.background = hsl(heard);
-    col.appendChild(a); col.appendChild(b); cp.appendChild(col);
+    if (i === best) col.classList.add('best');
+    const a = document.createElement('div'); a.style.background = hsl(entry.sent);
+    const b = document.createElement('div'); b.style.background = hsl(entry.heard);
+    col.appendChild(a); col.appendChild(b);
+    col.addEventListener('click', () => replayCrossing(entry, col));
+    cp.appendChild(col);
   });
-  const avg = Math.round(sum / S.history.length * 100);
+  const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 100);
   $('codaline').innerHTML =
     `${S.history.length} crossings; on average ${avg}% made it over. ` +
+    `The ${ORDINALS[best]} came closest; the ${ORDINALS[worst]} lost the most. ` +
     (human ? 'The gap never closed. Look how much crossed anyway.'
            : 'The gap never closes. Look how much crossed anyway.');
+  $('codahint').textContent = 'touch a crossing to hear it again';
   $('coda').style.display = 'flex';
   $('again').textContent = 'begin again';
 }
@@ -528,6 +553,7 @@ function begin(mode) {
   if (S.started) return;
   S.started = true;
   S.mode = mode;
+  try { localStorage.setItem('d2mode', mode); } catch (e) {}
   initAudio();
   if (AC.state === 'suspended') AC.resume();
   $('veil').classList.add('gone');
@@ -535,5 +561,15 @@ function begin(mode) {
 }
 $('modemachine').addEventListener('click', () => begin('machine'));
 $('modehuman').addEventListener('click', () => begin('human'));
+// A returning player finds their door already half-open.
+try {
+  const last = localStorage.getItem('d2mode');
+  if (last === 'machine' || last === 'human') {
+    $(last === 'machine' ? 'modemachine' : 'modehuman').classList.add('last');
+    $('modenote').textContent = last === 'machine'
+      ? 'last time, the machine listened.'
+      : 'last time, another mind listened — you’ll pass the phone.';
+  }
+} catch (e) {}
 layoutThumbs();
 </script>
