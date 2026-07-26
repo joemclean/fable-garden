@@ -53,6 +53,8 @@ const self_ = {
   x: W/2, y: H*0.55, vx: 0, vy: 0,
   hue: 38, sat: 30,          // pale warm, before it has eaten anything
   parts: [],                 // what has become me
+  dis: 0,                    // past ~8 parts the border starts to stop being visible
+  wasWide: false,            // a body that has been wide never quite forgets it
   seed: Math.random()*7
 };
 function baseR(){ return Math.min(W, H) * 0.105; }
@@ -190,9 +192,12 @@ function schedule(){
 function playBeat(t){
   if (skipBeats > 0){ skipBeats--; return; }   // a beat that simply isn't there
   lastVisBeat = t;
-  thump(t, 82, 46, 0.5, 0.16);                 // lub
-  thump(t + 0.24, 66, 40, 0.3, 0.13);          // dub
+  // as the border dissolves the drum diffuses too; the chorus of parts outlasts it
+  const dim = 1 - 0.55 * self_.dis;
+  thump(t, 82, 46, 0.5 * dim, 0.16);           // lub
+  thump(t + 0.24, 66, 40, 0.3 * dim, 0.13);    // dub
   if (self_.parts.length >= 2) breath(t, self_.parts.length);
+  else if (self_.wasWide) breath(t, 0.6);      // small again, but the chest remembers
   const r = selfR();
   for (const p of self_.parts){
     if (p.appear < 0.6) continue;
@@ -232,7 +237,8 @@ function say(txt){
   clearTimeout(wordTimer);
   wordTimer = setTimeout(()=>{ wordEl.style.opacity = 0; }, 4200);
 }
-const MILESTONES = {1:'one thing is you now', 4:'you are getting wider', 7:'where do you end?'};
+const MILESTONES = {1:'one thing is you now', 4:'you are getting wider', 7:'where do you end?',
+                    10:'your edge is harder to find', 12:'nothing here is not you'};
 
 /* ---------- input ---------- */
 let touch = null, downAt = 0, downX = 0, downY = 0, moved = 0;
@@ -285,7 +291,8 @@ function tryRelease(x, y){
   motes[motes.length-1].cool = 2.5;
   skipBeats = 1;                       // its beat drops out — you feel the hole
   sigh();
-  if (self_.parts.length === 0) say('just you again');
+  if (self_.parts.length === 0)
+    say(self_.wasWide ? 'just you again. almost.' : 'just you again');
 }
 
 /* ---------- absorption ---------- */
@@ -305,6 +312,7 @@ function absorb(m){
   self_.parts.push(part);
   gulp();
   const n = self_.parts.length;
+  if (n >= 10) self_.wasWide = true;
   if (MILESTONES[n]) say(MILESTONES[n]);
   setTimeout(()=>{ if (motes.length < 8) spawnMote(); }, 3000 + Math.random()*4000);
 }
@@ -353,6 +361,10 @@ function step(now){
     if (p.restlessNow && p.sick < 1) p.sick = Math.min(1, p.sick + dt/2.2);
   }
   wobT += dt / (1 + self_.parts.length * 0.06);
+
+  // past ~8 parts the border begins, slowly, to stop being there to see
+  const disT = Math.max(0, Math.min(1, (self_.parts.length - 8) / 4));
+  self_.dis += (disT - self_.dis) * Math.min(1, dt * 0.5);
 
   // motes drift and meet the border
   for (let i = motes.length - 1; i >= 0; i--){
@@ -424,6 +436,16 @@ function draw(now){
   // the body
   const pulse = 1 + beatEnv * (0.045 + 0.004 * self_.parts.length);
   const hue = ((self_.hue % 360) + 360) % 360;
+  const dis = self_.dis;
+  if (dis > 0.01){
+    // what leaves the border doesn't vanish — it becomes the room
+    const hr = r * (1.6 + 2.6 * dis);
+    const halo = g.createRadialGradient(self_.x, self_.y, r*0.3, self_.x, self_.y, hr);
+    halo.addColorStop(0, `hsla(${hue}, ${self_.sat}%, 26%, ${0.16 * dis})`);
+    halo.addColorStop(1, `hsla(${hue}, ${self_.sat}%, 20%, 0)`);
+    g.fillStyle = halo;
+    g.fillRect(0, 0, W, H);
+  }
   const grad = g.createRadialGradient(self_.x, self_.y, r*0.1, self_.x, self_.y, r*pulse);
   grad.addColorStop(0, `hsla(${hue}, ${self_.sat}%, 30%, .95)`);
   grad.addColorStop(0.8, `hsla(${hue}, ${self_.sat}%, 20%, .85)`);
@@ -433,12 +455,12 @@ function draw(now){
   g.fillStyle = grad;
   g.fill();
 
-  // the boundary itself — the line where I end
+  // the boundary itself — the line where I end, until it stops being findable
   g.beginPath();
   boundaryPath(r * pulse, t);
-  g.strokeStyle = `hsla(${hue}, ${self_.sat + 25}%, 68%, ${0.35 + beatEnv * 0.45})`;
-  g.lineWidth = 1.6 + beatEnv * 1.4 + self_.parts.length * 0.09;
-  g.shadowColor = `hsla(${hue}, 70%, 65%, .6)`;
+  g.strokeStyle = `hsla(${hue}, ${self_.sat + 25}%, 68%, ${(0.35 + beatEnv * 0.45) * (1 - 0.93 * dis)})`;
+  g.lineWidth = (1.6 + beatEnv * 1.4 + self_.parts.length * 0.09) * (1 - 0.45 * dis);
+  g.shadowColor = `hsla(${hue}, 70%, 65%, ${0.6 * (1 - 0.8 * dis)})`;
   g.shadowBlur = 10 + beatEnv * 18;
   g.stroke();
   g.shadowBlur = 0;
@@ -478,12 +500,13 @@ function draw(now){
 function boundaryPath(rr, t){
   const N = 72;
   const tw = wobT;   // the wobble clock slows as the body gains mass
+  const loose = 1 + self_.dis * 1.1;   // a dissolving border forgets its shape
   for (let i = 0; i <= N; i++){
     const a = i / N * Math.PI * 2;
     const wob = 1
-      + 0.040 * Math.sin(3*a + tw*1.25 + self_.seed)
-      + 0.026 * Math.sin(5*a - tw*0.9 + self_.seed*2)
-      + 0.014 * Math.sin(8*a + tw*1.7);
+      + 0.040 * loose * Math.sin(3*a + tw*1.25 + self_.seed)
+      + 0.026 * loose * Math.sin(5*a - tw*0.9 + self_.seed*2)
+      + 0.014 * loose * Math.sin(8*a + tw*1.7);
     const x = self_.x + Math.cos(a) * rr * wob;
     const y = self_.y + Math.sin(a) * rr * wob;
     i ? g.lineTo(x, y) : g.moveTo(x, y);

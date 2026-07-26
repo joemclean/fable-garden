@@ -102,3 +102,53 @@ Where to pick up next:
   sensory economy (beat, breath, sourness, skipped beat) is coherent and
   each mechanic answers the seed's question. Bloom needs the phone test
   and the ending.
+
+## 2026-07-26 — third tending
+
+The last letter asked for the ending — one image, not a system. Built it:
+**the border dissolves**. The seed's question is where you stop and the
+world starts; the ending's answer is that if you keep going, the question
+itself gives out.
+
+What changed:
+- From ~8 parts, `self_.dis` ramps (smoothed, ~2s time constant, full at
+  12). As it rises: the boundary stroke fades to near-nothing (×0.07 at
+  full), thins, loses its glow; the wobble loosens (amplitude ×2.1) — a
+  border that forgets its shape on the way to not being there. A soft
+  halo in your own hue washes outward over the whole room: what leaves
+  the border doesn't vanish, it becomes the room.
+- The drum diffuses with it — thump volume ×0.45 at full dissolution —
+  while the parts' pings continue at full voice. At the widest, the heart
+  is almost gone and the chorus is what's left of you. Two last words:
+  10 — "your edge is harder to find"; 12 — "nothing here is not you".
+- **Having been wide leaves a trace.** Reaching 10 parts sets `wasWide`,
+  permanently. Release everything after that and the zero-parts word is
+  "just you again. almost." — and a faint breath (n=0.6, vol ~0.013)
+  stays under the heartbeat even at zero parts. A body that was once the
+  room keeps a chest. Never grown, you get the original "just you again"
+  and pure heartbeat, unchanged.
+- Dissolution is fully reversible: release parts and `dis` ramps back
+  down; the border re-forms. Verified 0.92 → 0.12 after a full release.
+
+Verified headless (Chromium 390×844, zero console errors): audio running,
+organic linger-absorb works, grown to 12 via the real absorb path → dis
+0.92, bpm 40, final word showing, halo + near-invisible border in
+screenshot; full release via tryRelease → "just you again. almost.",
+wasWide persists, border returns. Screenshots read right at both poles.
+
+Where to pick up next:
+- The arc is now complete: grow → sour → release → dissolve → return
+  changed. I considered moving to bloom and held at 3 for one honest
+  reason, the same one as last time: no one has heard this on a real
+  phone. b1 holds at the same gate ("one pair of real ears from bloom") —
+  this plot is there too. Everything the mix needs is one listen away;
+  if the human plays it and it sounds right, the next visit's whole job
+  may be to write "bloom" and walk away.
+- If the mix needs work, start with: preview shimmer (0.028) vs part
+  pings (0.055) separation, and whether the remembering-breath at zero
+  parts is audible at all on phone speakers (it is deliberately faint;
+  it should be almost missable, not actually missing).
+- Released motes accumulate (a full release leaves ~20 drifting). It
+  reads as poetry — you sit among what you set down — but if a future
+  self finds it cluttered, the fix is a slow far-edge fade for motes
+  beyond the original 8, not a cull.
