@@ -64,6 +64,7 @@ let hotEdges=new Set();       // seq indices recently corrected — glow until r
 let shake=0,redFlash=0;
 let total=0,supplied=0,coastRun=0,errorsSeen=0;
 let halluSet=new Set(),halluCount=0,halluHints=0;
+let tapHalluArmed=false,invited=false,thesisShown=false;
 let lastFrame=0;
 
 function tNow(){return ac?ac.currentTime:performance.now()/1000;}
@@ -185,6 +186,7 @@ function mutate(){
   const i=Math.floor(Math.random()*N);
   let v;do{v=Math.floor(Math.random()*N);}while(v===truthSeq[i]);
   truthSeq[i]=v;
+  tapHalluArmed=true; // each surprise buys one confident wrong tap a free pass
 }
 function fireError(e){
   stab(e.truth,e.sev);
@@ -205,6 +207,10 @@ function fireError(e){
   if(e.hallu){
     flashes.push({x:wx,y:wy,t0:tNow(),sev:.6,pale:true});
     if(halluHints++<1)hint('that bright beat — the world never played it; you did');
+  }
+  if(invited&&!thesisShown&&e.coast&&halluCount>0){
+    thesisShown=true;
+    hint('everything bright was yours — only the stings were the world');
   }
 }
 function resolveBeat(){
@@ -227,11 +233,19 @@ function resolveBeat(){
           flashes.push({x:stonePos(modelSeq[i])[0],y:stonePos(modelSeq[i])[1],t0:tNow(),sev:.5,pale:true});
           if(halluHints++<1)hint('that bright beat last loop — the world never played it; you did');
         }
+      }else if(s===modelSeq[i]&&conf>.55&&vivid>.8&&tapHalluArmed&&!halluSet.has(i)){
+        // conviction outvotes the signal: a firm tap on the old round renders
+        // clean even though the whisper said otherwise. Attention hallucinating.
+        tapHalluArmed=false;
+        halluCount++;halluSet.add(i);
+        vivid=Math.min(1,vivid+.015);
+        hallucinated=true;
       }else{
         pendingErrs.push({at:nextBeatT+.16,truth:truth,idx:i,sev:.55+.45*conf,from:s,hallu:halluSet.delete(i)});
       }
     }else{
       coastRun++;
+      if(invited&&coastRun===2)hint('');
       const s=modelSeq[i];
       if(s!==truth&&vivid>.72&&playLoops>=2){
         // a fully hallucinated beat: the model overrides the absent signal —
@@ -243,7 +257,7 @@ function resolveBeat(){
       }else{
         land(s,.22,.75);
         vivid=Math.max(.06,vivid-.045);
-        if(s!==truth)pendingErrs.push({at:nextBeatT+.16,truth:truth,idx:i,sev:1,from:s,hallu:halluSet.delete(i)});
+        if(s!==truth)pendingErrs.push({at:nextBeatT+.16,truth:truth,idx:i,sev:1,from:s,coast:true,hallu:halluSet.delete(i)});
         if(coastRun===5&&halluCount===0)hint('tap the stone you expect next');
       }
     }
@@ -267,6 +281,11 @@ function resolveBeat(){
       Math.round(100*supplied/Math.max(1,total))+'%'+
       (halluCount?' · '+halluCount+(halluCount===1?' beat':' beats')+' the world never played':'');
     statEl.style.opacity='.9';
+  }
+  // the best twenty seconds live on the far side of letting go — invite them
+  if(!invited&&total>=28&&coastRun===0&&supplied/total>.6){
+    invited=true;
+    hint('now stop tapping — watch what your world does alone',true);
   }
 }
 function logic(){
