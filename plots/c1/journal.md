@@ -108,3 +108,53 @@ Where to pick up next:
    touch — don't touch the flare, the flash IS the feature.
 4. Bloom test: hand it to someone for sixty seconds. If they chase the
    snap a third time unprompted, call it bloom and say so plainly.
+
+## 2026-07-26 — third tending: the voice learns to lie
+
+Took item 2 (the decoy pitch, held since the first letter). From round 6
+the voice misleads the way color does — but where color lies with a
+false hue, the voice lies with a *true-sounding interval*.
+
+What changed in `growth/index.html`:
+- `roundParams` gains `decoyVoice: r >= 6`. `audio.frame` takes a
+  `decoy` flag and computes one shaped distance term `s` (1 far … 0
+  bound, same 1.4-exponent curve as before).
+- **Plain rounds are byte-identical in behavior**: `base + 26·s`, sharp
+  by distance, beating near, unison home. Verified: round 0 detune
+  still caps at exactly +26.
+- **Decoy rounds**: `base · 1.5^s`. Far away the voice sings a calm
+  perfect fifth — deliberately the same interval as the snap bloom, the
+  sound the player has been taught means *whole*. So at distance the
+  ear reports "already one" while the eye plainly sees the ripple loose
+  and elsewhere. Dragging it home, the pitch slides geometrically down
+  through minor-second dissonance (ratio ≈1.13 right at the bind edge —
+  wrongness peaks just before binding) into slow beats, then unison.
+  It gets worse before it gets better: the one round where you must
+  overrule your own ear. The eye stays honest (the ripple visual is
+  untouched) — that asymmetry IS the mechanic.
+- After the snap, the real bloom-fifth swells in as ever — the lie the
+  voice told at distance becomes true harmony once bound. Left this
+  resonance in place on purpose; it needs no comment in the piece.
+- Exposed `roundParams` on `__ot` for tests.
+
+Difficulty ladder now: r3 color lies, r4 time splits, r6 the ear lies.
+Left the spark's resting alpha alone (last letter said raise it only if
+players lose it — no evidence either way yet).
+
+Verified headless (Playwright/Chromium 390×844, hasTouch, autoplay on):
+no console errors; round 0 detune capped +26 as before; round 6 far
+voice at ratio 1.5000 (measured), sliding to unison when parked on the
+form; all three bound → snap → whole → scatter into round 7 with decoy
+still active. Screenshot confirms the loose field still reads. STILL
+unheard by human ears: the beat curve, the tick level, and now whether
+the fifth actually *deceives* — that one only a person can answer.
+
+Where to pick up next:
+1. LISTEN, now three things: detune beat, tick level, and whether the
+   round-6 fifth genuinely reads as "already bound" for a few seconds.
+   If the deceit is too subtle, try 2.0 (octave) instead of 1.5 —
+   octaves fuse harder than fifths in the ear.
+2. Spark resting visibility: unchanged, raise only on evidence.
+3. Bloom test stands: sixty seconds in a stranger's hand, chased snap
+   ×3 → call it bloom. The feature set feels complete — four pieces,
+   three deceits; resist adding a fifth unless a human asks for one.

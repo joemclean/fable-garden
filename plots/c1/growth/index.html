@@ -143,6 +143,7 @@ function roundParams() {
     driftSpeed: Math.min(5 + r * 5, 46),
     misleading: r >= 3,   // color lies about its hue until it gets close
     tempoOn: r >= 4,      // the object's rhythm breaks off as a fourth piece
+    decoyVoice: r >= 6,   // the voice sings a plausible fifth until it nears home
   };
 }
 
@@ -254,13 +255,21 @@ const audio = {
 
   // called every frame; phases are the private visual timelines,
   // so what pulses in the eye pulses identically in the ear
-  frame(voiceDn, colorClose, humPulse, voicePulse, colorPulse, whole) {
+  frame(voiceDn, colorClose, humPulse, voicePulse, colorPulse, whole, decoy) {
     if (!this.on) return;
     const t = this.ctx.currentTime;
 
-    // detune: far = clearly another note; near = slow beating; home = unison
-    const det = whole ? 0 : 26 * Math.min(1, Math.max(0, (voiceDn - 0.12) / (NEAR_R - 0.12))) ** 1.4;
-    this.voiceOsc.frequency.setTargetAtTime(this.base + det, t, 0.06);
+    // s: how far from home, shaped — 1 far … 0 bound
+    const s = whole ? 0 : Math.min(1, Math.max(0, (voiceDn - 0.12) / (NEAR_R - 0.12))) ** 1.4;
+    // plain rounds: pushed sharp by distance — far is plainly another
+    // note, near beats slowly, home is unison.
+    // decoy rounds: far sings a calm perfect fifth — the interval the
+    // snap bloom taught means "whole" — and only nearing home does it
+    // slide down through real dissonance into beating unison. It gets
+    // worse before it gets better; this round, the ear lies and the
+    // eye must overrule it.
+    const vf = decoy ? this.base * Math.pow(1.5, s) : this.base + 26 * s;
+    this.voiceOsc.frequency.setTargetAtTime(vf, t, 0.06);
 
     // each stream breathes on its own timeline until bound
     this.humGain.gain.setTargetAtTime(0.13 + 0.06 * humPulse, t, 0.05);
@@ -469,7 +478,8 @@ function update(dt) {
   const voiP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : voice.pulsePhase);
   const colP = 0.5 + 0.5 * Math.sin(state.phase === 'whole' || state.phase === 'snapping' ? state.breath : color.pulsePhase);
   audio.frame(voice.dn, color.closeness, humP, voiP, colP,
-              state.phase === 'whole' || state.phase === 'snapping');
+              state.phase === 'whole' || state.phase === 'snapping',
+              p.decoyVoice);
 }
 
 function beginSnap() {
@@ -614,7 +624,7 @@ function draw() {
 }
 
 // expose a small handle for headless verification
-window.__ot = { state, form, color, voice, tempo, audio, placeRound, activeFeatures };
+window.__ot = { state, form, color, voice, tempo, audio, placeRound, activeFeatures, roundParams };
 
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
