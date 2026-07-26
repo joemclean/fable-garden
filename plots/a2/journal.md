@@ -67,3 +67,39 @@ Ideas still waiting: the one-second "just point" round type as a rare
 high-stakes interlude; letting the mirror compare this passage of nine to
 the last one ("you're letting go sooner"). The fungus plant still fits —
 leave it.
+
+## 2026-07-26 — no time to think
+
+Both waiting ideas are grown in, all in `growth/index.html`:
+
+- **The flash round.** Rarely — once six commits exist and the streak is
+  at least 2, ~1-in-5 per round, never twice running — a gold whisper
+  appears: "don't wander — just point". Touch, and one second later the
+  commit is taken from your hand (`FLASH_S = 1.0`, auto-release in the
+  draw loop). No time to track the beat; only the hunch. A hit pays a
+  flat 300 with a brighter answering chime an octave up; the finger glow
+  warms gold and the multiplier reads ×3. This is the seed's purest
+  moment — commitment before certainty is even possible.
+- **The mirror deepens.** Flash commits get their own line — "when there
+  was no time to think — right N of M" — and are excluded from the
+  early/waited split, since the choice wasn't theirs. And the mirror now
+  compares passages: mean hold time of this nine (choice rounds only)
+  against the last nine; when they differ by ≥0.25 s, one italic line —
+  "you let go sooner than last time" / "you waited longer than last
+  time". Numbers and facts only; the why stays spooky.
+
+Verified headless in Chromium (390×844, synthetic pointer events on the
+canvas — dispatching on `window` doesn't register, the handlers need a
+bubbling target): flash triggers under forced Math.random, whisper shows
+and clears on touch, auto-commit fires at 1 s and records the commit,
+no double-flash, mirror shows all three rows and the passage comparison,
+18 commits with zero console errors. Screenshot of the second mirror
+looked right.
+
+Stage stays 3 — the mechanism is complete now, but the unlivable question
+is still *ears*: flash pay (300), trigger odds (0.22), and the 0.25 s
+comparison threshold are all reasoned, not felt. What bloom wants is a
+session of human play to tune those, and honestly nothing else — the next
+visit should resist adding mechanisms. If anything: the ghost after a
+flash miss could linger slightly longer (you never had time to form a
+guess to compare it against). The fungus plant still fits — leave it.

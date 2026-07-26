@@ -76,6 +76,17 @@
     margin-top: 40px; font-size: 12px; letter-spacing: 4px; text-transform: uppercase;
     color: #6d7789; animation: breathe 3s ease-in-out infinite;
   }
+  #reveal .rv-cmp {
+    margin-top: 26px; font-size: 13px; letter-spacing: 1px;
+    color: #8a93a6; font-style: italic;
+  }
+  #whisper {
+    position: fixed; left: 0; right: 0; top: 30%;
+    text-align: center; pointer-events: none; z-index: 5;
+    font-size: 17px; letter-spacing: 3px; color: #ebd7a0;
+    opacity: 0; transition: opacity .6s ease;
+  }
+  #whisper.on { opacity: .85; animation: breathe 2.2s ease-in-out infinite; }
 </style>
 
 <canvas id="stage"></canvas>
@@ -91,6 +102,7 @@
   <div class="go">touch to begin</div>
   <div class="hp">sound on &middot; headphones help</div>
 </div>
+<div id="whisper">don't wander &mdash; just point</div>
 <div id="reveal">
   <div class="rv-title">a breath, before going on</div>
   <div id="rv-body"></div>
@@ -127,14 +139,18 @@ let score = 0, streak = 0;
 let best = parseInt(localStorage.getItem('a2-best') || '0', 10) || 0;
 let resting = false;         // brief pause after a commit
 let revealing = false;       // the hesitation mirror is up
-let commits = [];            // {held, hit} — the player's own hesitation curve
+let commits = [];            // {held, hit, flash} — the player's own hesitation curve
 let effects = [];            // transient rings / blooms
 let audioReady = false;
+let flashRound = false;      // "just point": one second, no time to think
+let passages = [];           // one summary per completed nine, for the mirror
 const EARLY_S = 2.2;         // letting go before this counts as trusting early
+const FLASH_S = 1.0;         // a flash round auto-commits after this long
 
 const scoreEl = document.getElementById('score');
 const streakEl = document.getElementById('streak');
 const multEl = document.getElementById('mult');
+const whisperEl = document.getElementById('whisper');
 
 function newRound() {
   const m = 0.16; // keep target away from edges
@@ -144,6 +160,11 @@ function newRound() {
   };
   // trust has to deepen: the mark tightens as the streak grows
   hitRadius = Math.min(W, H) * 0.15 * (1 - Math.min(streak, 6) * 0.06);
+  // rarely, once trust has shown itself, a round with no time to think:
+  // touch, and one second later the commit is taken from your hand
+  const wasFlash = flashRound;
+  flashRound = !wasFlash && commits.length >= 6 && streak >= 2 && Math.random() < 0.22;
+  whisperEl.classList.toggle('on', flashRound);
   resting = false;
 }
 
@@ -227,13 +248,13 @@ function audioTrack(n) {
   noiseFilter.frequency.setTargetAtTime(300 + n * n * 1100, t, 0.2);
 }
 
-function chime(step) {
+function chime(step, delay) {
   // soft pentatonic pluck, rising with the streak
   if (!audioReady) return;
   const scale = [0, 2, 4, 7, 9];
   const semis = scale[step % 5] + 12 * Math.floor(step / 5);
   const f = 432 * Math.pow(2, Math.min(semis, 24) / 12);
-  const t = AC.currentTime;
+  const t = AC.currentTime + (delay || 0);
   const o = AC.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
   const g = AC.createGain();
   g.gain.setValueAtTime(0, t);
@@ -279,6 +300,7 @@ window.addEventListener('pointerdown', e => {
   holding = true;
   holdStart = performance.now();
   finger = pointerPos(e);
+  if (flashRound) whisperEl.classList.remove('on');
   audioListen(true);
   audioTrack(nearness(finger.x, finger.y));
   multEl.style.opacity = 1;
@@ -308,12 +330,13 @@ function commit(x, y) {
   const mult = currentMult();
   const held = (performance.now() - holdStart) / 1000;
   const hit = d <= hitRadius;
-  commits.push({ held, hit });
+  commits.push({ held, hit, flash: flashRound });
   if (hit) {
-    const pts = Math.round(100 * mult);
+    const pts = flashRound ? 300 : Math.round(100 * mult);
     score += pts; streak += 1;
     if (streak > best) { best = streak; localStorage.setItem('a2-best', best); }
     chime(streak - 1);
+    if (flashRound) chime(streak + 4, 0.09); // a brighter answering note
     effects.push({ kind: 'bloom', x, y, t0: performance.now(), pts });
   } else {
     streak = 0;
@@ -337,8 +360,11 @@ const rvBody = document.getElementById('rv-body');
 
 function showReveal() {
   const nine = commits.slice(-9);
-  const early = nine.filter(c => c.held < EARLY_S);
-  const late = nine.filter(c => c.held >= EARLY_S);
+  // flash rounds took the choice away — they get their own line
+  const chosen = nine.filter(c => !c.flash);
+  const flashed = nine.filter(c => c.flash);
+  const early = chosen.filter(c => c.held < EARLY_S);
+  const late = chosen.filter(c => c.held >= EARLY_S);
   const row = (label, arr) => {
     if (!arr.length) return '<div class="rv-line">' + label + ' &mdash; you never did</div>';
     const h = arr.filter(c => c.hit).length;
@@ -346,9 +372,21 @@ function showReveal() {
       ' of ' + arr.length + '</span></div>' +
       '<div class="rv-bar"><i style="width:' + Math.round(100 * h / arr.length) + '%"></i></div>';
   };
+  // how this nine sat with hesitation, against the last nine
+  const pool = chosen.length ? chosen : nine;
+  const meanHeld = pool.reduce((s, c) => s + c.held, 0) / pool.length;
+  const prev = passages[passages.length - 1];
+  let cmp = '';
+  if (prev && Math.abs(meanHeld - prev.meanHeld) >= 0.25) {
+    cmp = '<div class="rv-cmp">' + (meanHeld < prev.meanHeld ?
+      'you let go sooner than last time' : 'you waited longer than last time') + '</div>';
+  }
+  passages.push({ meanHeld });
   rvBody.innerHTML =
     row('when you let go early', early) +
-    row('when you waited to be sure', late);
+    row('when you waited to be sure', late) +
+    (flashed.length ? row('when there was no time to think', flashed) : '') +
+    cmp;
   revealing = true;
   revealEl.classList.add('on');
 }
@@ -389,13 +427,19 @@ function draw(now) {
 
   // finger acknowledgement (carries no information)
   if (holding) {
-    const g = cx.createRadialGradient(finger.x, finger.y, 0, finger.x, finger.y, 46);
-    g.addColorStop(0, 'rgba(160,175,205,0.10)');
-    g.addColorStop(1, 'rgba(160,175,205,0)');
-    cx.fillStyle = g;
-    cx.beginPath(); cx.arc(finger.x, finger.y, 46, 0, Math.PI * 2); cx.fill();
+    // a flash round leaves no time to choose — the second runs out here
+    if (flashRound && now - holdStart >= FLASH_S * 1000) {
+      endHold();
+    } else {
+      const warm = flashRound;
+      const g = cx.createRadialGradient(finger.x, finger.y, 0, finger.x, finger.y, 46);
+      g.addColorStop(0, warm ? 'rgba(235,215,160,0.12)' : 'rgba(160,175,205,0.10)');
+      g.addColorStop(1, warm ? 'rgba(235,215,160,0)' : 'rgba(160,175,205,0)');
+      cx.fillStyle = g;
+      cx.beginPath(); cx.arc(finger.x, finger.y, 46, 0, Math.PI * 2); cx.fill();
 
-    multEl.textContent = '×' + currentMult().toFixed(1);
+      multEl.textContent = warm ? '×3' : '×' + currentMult().toFixed(1);
+    }
   }
 
   // effects
