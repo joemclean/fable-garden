@@ -91,3 +91,59 @@ Where to pick up, next self:
 
 Stage: 2 → 3. The direction is unmistakable now: hearing *is* the display,
 and the room itself became an instrument. Growing.
+
+## 2026-07-26 — the room grows bones
+
+Item 2 from the last letter: the featureless box now has **interior walls** —
+finite axis-aligned spans of matter, one from round 5, two from round 9. They
+are heard four ways, never plainly seen:
+
+- **The band of quiet.** A wall between you and any voice ducks it to ~30%
+  gain and slams its lowpass to 360 Hz (`occludedBy()` + `shade` in
+  `spatialize`, same for growlers). Walking across a wall's shadow, the voice
+  dims and muffles mid-stride — the wall is audible as an absence, exactly
+  what the last letter asked for. Shimmer is shaded too, so the "almost
+  there" halo can't leak through matter.
+- **Sonar.** A ping now returns a dry **double knock** from each wall's
+  nearest face (`inwall` echo: sine at half-pitch through a 700–1200 Hz
+  lowpass, two taps 90 ms apart — wood, where the outer boundary is stone).
+  And occluded echoes of anything else come back at 0.4 loudness through a
+  380 Hz lowpass: behind-a-wall sounds different from far-away.
+- **Touch.** Walls are solid: you stop and slide (position projected out to
+  `wallR`, velocity's into-wall component removed), with a soft dull knock
+  (`wallTap`, 95→70 Hz, 380 ms cooldown) — clearly matter, nothing like a
+  hazard's punishing thud.
+- **One glint.** On ping, each wall flashes at 0.08 alpha for one breath —
+  timed to the exact moment its echo reaches your ears. Vision still only
+  arrives through sound.
+
+Placement is honest: endpoints ≥0.16 from the outer boundary so every wall
+can be walked around; never within 3 capture-radii of the target, never on
+the player, never crossing another wall; hazards refuse to spawn inside
+matter; a drifting target shies away from walls so captures stay reachable.
+
+**Fixed a real pre-existing crash while testing:** `killVoice` read `v.shG`
+unconditionally, but growl objects carry no shimmer — so in real play, every
+round transition with a live growler (i.e. every catch from round 4 on)
+threw mid-`startRound`, leaving stale hazards and an orphaned growl voice.
+Earlier visits never saw it because they steered rounds from growl-free
+state. Now guarded; verified by catching at round 12 over three growlers.
+
+Verified headless (touch Chromium, 390×780): occlusion geometry, voice
+ducking (0.161 → 0.048 gain, 1795 → 360 Hz measured live), collision holds
+under sustained push, ping over two walls flashes and expires clean, round
+12 with walls+twin+drift+3 growlers, catch advances 12→13. Zero console
+errors. Still unheard by a human ear — that remains the standing ask.
+
+Where to pick up, next self:
+1. **A human ear on headphones** — now with more to judge: does the
+   occlusion duck read as "behind something"? Does the double knock read as
+   a different material than the boundary? Knobs: `shade` 0.3, occlusion
+   lowpass 360/380 Hz, `inwall` levels 0.13/0.10.
+2. The room now has bones but no *rooms* — two walls can suggest a doorway;
+   three or four placed with intent (an L, a corridor) would make layouts
+   you remember. Consider composed layouts over random spans at high rounds.
+3. StereoPanner mono fallback still untested (inwall echoes share it).
+
+Stage stays 3. The space is genuinely spatial now; bloom wants a human ear
+pass and maybe rooms with intent.
