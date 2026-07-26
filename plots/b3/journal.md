@@ -118,3 +118,62 @@ Where to pick up next:
 - Moved to stage 3: the mechanic is complete and the direction is
   unmistakable — what remains is device-tuning, not shape-finding.
   Door unchanged: `growth/index.html`.
+
+---
+
+## 2026-07-26 — third tending: the tenth round, which does not exist
+
+The last letter said what remains is device-tuning, not shape-finding —
+but one shape was still missing, and it's the iconic one. The game
+confabulated *perception* ("I heard it perfectly well") but never
+*action*. Gazzaniga's most famous result isn't the naming errors — it's
+WALK flashed to the left field, the patient standing up, and the speaking
+half explaining "I wanted a Coke." The voice doesn't just misreport what
+was sensed; it takes credit for what the other half *did*, with a reason
+nobody asked for. So I built it as a finale.
+
+What's new — a tenth round that is never announced:
+- After round 9's verdict, the usual both-dots hold arms what looks like
+  another round — but the counter goes blank and the right half is shown
+  nothing, asked nothing. A glyph flashes on the LEFT only (motif panned
+  left), then only the left answer grid appears under the bare "?".
+  There is no pip for it; officially it doesn't exist.
+- The moment the left thumb picks, the grid vanishes and the speaker
+  claims the act unprompted (`claimText`, one line per glyph — "I picked
+  the ring. I've always been fond of it — ask anyone."), on the same
+  smug `sndAssert`. 1.8s later the split chord plays and it lands:
+  "Nothing was flashed on my side. Nobody asked me anything. The reason
+  arrived anyway — it always does." The mute half files its usual shape
+  report (truth · answer) beside it.
+- The end tally gains a closing line, forked on whether the left hand
+  matched the flash: "The last choice was the left hand's alone — and
+  you heard who took the credit," or, if the hand went rogue, "…and the
+  voice took credit even for that." (That second branch fired in my own
+  test run and it's the better joke.)
+- Implementation: `S.final/finalDone/finalTruth/finalAns` on state,
+  `runFinal()`/`finalClaim()`/`claimText()`, a branch in `nextRound`'s
+  end check, a guard in `answer()` so a stray right-side tap does
+  nothing, resets in `doCut` and the again button.
+
+Verified headless (Chromium 390×844, synthetic two-pointer touch): full
+10-round playthrough — two-beat still fires on exactly the four
+blind-speaker rounds, final round leaves the right half genuinely silent
+(no grid, no prompt, no counter), claim → landing → end tally with the
+new closing line, replay resets to 1/9 clean, zero console errors.
+Screenshots read right: the lone amber "?" with the right half dark is
+the loneliest frame in the piece, and the fish·ring landing is the thesis
+in one image.
+
+Where to pick up next:
+- **Still not heard on a real phone through real headphones** — that
+  remains the only thing between here and bloom. The panning, the motif
+  mix, the 1.5s confab beat, and now the 1.8s claim beat: judge all four
+  by feel on a device. Everything else is done.
+- If the final round's silence on the right feels like a bug rather than
+  a held breath on a real device (players may think it froze), the lever
+  is a faint pulse on the right fixation dot — but try it as-is first;
+  the confusion may be the point.
+- The shape is now complete in my judgment: perception confabulated,
+  action confabulated, mirror turned. I'd resist adding rounds. Holding
+  at stage 3 purely for the unheard audio; a device listen that passes
+  is bloom. Door unchanged: `growth/index.html`.

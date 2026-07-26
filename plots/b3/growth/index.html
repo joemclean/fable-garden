@@ -268,6 +268,7 @@ const S = {
   phase: 'title', rounds: [], i: -1,
   ansL: null, ansR: null, seq: 0,
   stats: { split:0, bothRight:0, lucky:0 },
+  final: false, finalDone: false, finalTruth: null, finalAns: null,
   holds: { L:null, R:null, C:null }, holdTimer: null
 };
 const qs = location.search;
@@ -353,13 +354,17 @@ function doCut(){
   $('titleOverlay').classList.add('gone');
   S.rounds = makeRounds(); S.i = -1;
   S.stats = { split:0, bothRight:0, lucky:0 };
+  S.final = false; S.finalDone = false; S.finalTruth = S.finalAns = null;
   pips.querySelectorAll('i').forEach(p => p.classList.remove('done'));
   setTimeout(() => { $('stage').classList.remove('shake'); nextRound(); }, 500);
 }
 async function nextRound(){
   const my = ++S.seq;
   S.i++;
-  if(S.i >= S.rounds.length){ showEnd(); return; }
+  if(S.i >= S.rounds.length){
+    if(!S.finalDone){ S.finalDone = true; runFinal(); } else showEnd();
+    return;
+  }
   S.phase = 'flash'; S.ansL = S.ansR = null;
   verdictL.classList.remove('show');
   promptR.classList.remove('show'); promptL.classList.remove('show');
@@ -399,6 +404,7 @@ async function nextRound(){
 }
 function answer(side, glyph){
   if(S.phase !== 'answer') return;
+  if(S.final && side === 'R') return;
   if(side === 'L' && S.ansL) return;
   if(side === 'R' && S.ansR) return;
   const el = side === 'L' ? ansLEl : ansREl;
@@ -407,7 +413,68 @@ function answer(side, glyph){
   el.classList.add('locked');
   sndClick(side === 'L' ? -1 : 1);
   if(side === 'L') S.ansL = glyph; else S.ansR = glyph;
+  if(S.final){ finalClaim(); return; }
   if(S.ansL && S.ansR) showVerdict();
+}
+
+/* ---------- the tenth round, which does not exist ----------
+   Nothing is announced. The left half alone is shown a glyph and the
+   left hand alone answers — no question ever reaches the speaker.
+   Then the voice takes credit, with a reason nobody asked for.
+   (Gazzaniga's patient stood up when WALK flashed on the left, and
+   the speaking half explained: "I wanted a Coke.") */
+async function runFinal(){
+  const my = ++S.seq;
+  S.final = true; S.phase = 'flash'; S.ansL = S.ansR = null;
+  verdictL.classList.remove('show');
+  promptR.classList.remove('show'); promptL.classList.remove('show');
+  ansLEl.classList.remove('show','locked'); ansREl.classList.remove('show','locked');
+  ansLEl.querySelectorAll('.abtn').forEach(b => b.classList.remove('chosen'));
+  ansREl.querySelectorAll('.abtn').forEach(b => b.classList.remove('chosen'));
+  setDotsPulse(false);
+  $('counterR').textContent = '';
+  S.finalTruth = GLYPHS[Math.floor(Math.random()*GLYPHS.length)];
+  await sleep(500); if(my !== S.seq) return;
+  sndTick();
+  await sleep(400); if(my !== S.seq) return;
+  glyphL.innerHTML = svgOf(S.finalTruth); glyphL.classList.add('show');
+  playMotif(S.finalTruth, -1);
+  await sleep(360); if(my !== S.seq) return;
+  glyphL.classList.remove('show');
+  await sleep(300); if(my !== S.seq) return;
+  S.phase = 'answer';
+  promptL.classList.add('show');
+  ansLEl.classList.add('show');
+  /* the right half is told nothing, asked nothing */
+}
+function claimText(a){
+  return {
+    moon: 'I picked the moon. I was in a quiet mood — my choice, start to finish.',
+    key:  'I picked the key. Doors, locks — you never know. My idea.',
+    ring: 'I picked the ring. I’ve always been fond of it — ask anyone.',
+    fish: 'I picked the fish. I was thinking of water. That was me.'
+  }[a];
+}
+function finalClaim(){
+  S.phase = 'confab';
+  const my = S.seq, aL = S.ansL;
+  S.finalAns = aL;
+  ansLEl.classList.remove('show'); promptL.classList.remove('show');
+  promptR.textContent = claimText(aL);
+  promptR.classList.add('show');
+  sndAssert();
+  setTimeout(() => {
+    if(my !== S.seq || S.phase !== 'confab') return;
+    S.phase = 'verdict';
+    sndSplit();
+    promptR.textContent = 'Nothing was flashed on my side. Nobody asked me anything. ' +
+      'The reason arrived anyway — it always does.';
+    $('vlTruth').innerHTML = svgOf(S.finalTruth);
+    $('vlAns').innerHTML = svgOf(aL);
+    verdictL.classList.toggle('match', aL === S.finalTruth);
+    verdictL.classList.add('show');
+    setDotsPulse(true);
+  }, 1800);
 }
 
 /* ---------- the interpreter speaks (right half only) ---------- */
@@ -515,6 +582,9 @@ function showEnd(){
   if(S.stats.lucky > 0) t += ' And ' + S.stats.lucky + ' blind guess' +
     (S.stats.lucky === 1 ? ' was' : 'es were') +
     ' right — luck that felt, from inside, exactly like knowledge.';
+  if(S.finalAns) t += S.finalAns === S.finalTruth
+    ? ' The last choice was the left hand’s alone — and you heard who took the credit.'
+    : ' At the very end the left hand went its own way — and the voice took credit even for that.';
   $('endText').textContent = t;
   $('endOverlay').classList.add('show');
 }
@@ -523,6 +593,7 @@ $('againBtn').addEventListener('click', () => {
   S.phase = 'cutting';
   S.rounds = makeRounds(); S.i = -1;
   S.stats = { split:0, bothRight:0, lucky:0 };
+  S.final = false; S.finalDone = false; S.finalTruth = S.finalAns = null;
   pips.querySelectorAll('i').forEach(p => p.classList.remove('done'));
   nextRound();
 });
