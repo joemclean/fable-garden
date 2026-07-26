@@ -75,11 +75,12 @@
   }
   #ask.on { transform: translateY(0); }
   #ask .q { font-size: 15px; letter-spacing: .18em; color: rgba(233,236,242,.9); margin-bottom: 22px; }
-  #ask .row { display: flex; justify-content: center; gap: 10px; }
+  #ask .row { display: flex; justify-content: center; gap: 10px; padding: 0 14px; }
   #ask button {
     font-family: inherit; font-size: 13px; letter-spacing: .14em;
     background: none; color: #e9ecf2; border: 1px solid rgba(233,236,242,.3);
-    border-radius: 999px; padding: 13px 0; width: 74px; cursor: pointer;
+    border-radius: 999px; padding: 13px 0; cursor: pointer;
+    flex: 1 1 0; max-width: 78px; min-width: 0;
   }
   #ask button[data-sure="0"] {
     color: rgba(233,236,242,.55); border-color: rgba(233,236,242,.16);
@@ -106,6 +107,13 @@
   #reveal h2 .disowned { color: #c9a6ff; }
   #reveal .both { font-size: 13px; color: rgba(233,236,242,.55); margin: 10px 0 0; }
   #reveal .seam { font-size: 12.5px; line-height: 1.7; color: rgba(201,166,255,.75); margin: 16px 0 0; }
+  #reveal .fig { margin: 24px 0 0; }
+  #reveal .fig svg { width: 100%; height: auto; display: block; }
+  #reveal .figcap {
+    font-size: 11px; line-height: 1.7; letter-spacing: .03em;
+    color: rgba(233,236,242,.4); margin: 8px 0 0;
+  }
+  #reveal .figcap .k { color: #c9a6ff; }
   #reveal .rows { margin: 34px 0 8px; }
   .trow {
     display: flex; align-items: center; gap: 14px;
@@ -157,6 +165,7 @@
   <p class="both" id="sureline"></p>
   <p class="both" id="bothline"></p>
   <p class="seam" id="seamline"></p>
+  <div class="fig" id="fig"></div>
   <div class="rows" id="rows"></div>
   <p class="close">The feeling of <i>I did that</i> is not a witness — it is a
   verdict, written after the fact, from whatever evidence arrives in time.
@@ -377,6 +386,72 @@ function answer(said, sure) {
 }
 
 /* ---------- reveal ---------- */
+/* the seam figure: every late act as a mark on a delay axis, in staircase
+   order top to bottom — the hunt drawn, and the seam where it closed in.
+   ● kept (cream) · × given away (violet) · faded means the answer hedged. */
+function seamFigure() {
+  const fig = document.getElementById('fig');
+  const cs = trials.filter(t => t.type === 'C');
+  if (!cs.length) { fig.innerHTML = ''; return; }
+  const w = 320, padL = 16, padR = 16, rowH = 30, top = 30;
+  const axisY = top + (cs.length - 1) * rowH + 16;
+  const h = axisY + 22;
+  const x = ms => padL + (ms / 1200) * (w - padL - padR);
+  const p = [];
+  // the staircase path, faint, so the hunt itself is visible
+  p.push(`<polyline points="${cs.map((t, i) =>
+    `${x(t.delay).toFixed(1)},${top + i * rowH}`).join(' ')}"
+    fill="none" stroke="rgba(233,236,242,.14)" stroke-width="1"/>`);
+  cs.forEach((t, i) => {
+    const mx = x(t.delay), my = top + i * rowH, op = t.sure ? 1 : 0.45;
+    if (t.said) {
+      p.push(`<circle cx="${mx}" cy="${my}" r="4.2" fill="#f4e8d2" opacity="${op}"/>`);
+    } else {
+      p.push(`<g stroke="#c9a6ff" stroke-width="1.6" opacity="${op}">` +
+        `<line x1="${mx - 4}" y1="${my - 4}" x2="${mx + 4}" y2="${my + 4}"/>` +
+        `<line x1="${mx - 4}" y1="${my + 4}" x2="${mx + 4}" y2="${my - 4}"/></g>`);
+    }
+    p.push(`<text x="${mx}" y="${my - 10}" text-anchor="middle" font-size="9"
+      fill="rgba(233,236,242,.35)">${t.delay}</text>`);
+  });
+  p.push(`<line x1="${x(0)}" y1="${axisY}" x2="${x(1200)}" y2="${axisY}" stroke="rgba(233,236,242,.18)"/>`);
+  for (const ms of [0, 250, 500, 750, 1000]) {
+    p.push(`<line x1="${x(ms)}" y1="${axisY}" x2="${x(ms)}" y2="${axisY + 4}" stroke="rgba(233,236,242,.18)"/>`);
+    p.push(`<text x="${x(ms)}" y="${axisY + 15}" text-anchor="middle" font-size="9"
+      fill="rgba(233,236,242,.3)">${ms}</text>`);
+  }
+  p.push(`<text x="${w - 1}" y="${axisY + 15}" text-anchor="end" font-size="9"
+    fill="rgba(233,236,242,.3)">ms</text>`);
+  const owned = cs.filter(t => t.said).map(t => t.delay);
+  const dis = cs.filter(t => !t.said).map(t => t.delay);
+  if (owned.length && dis.length) {
+    const mid = Math.round((Math.max(...owned) + Math.min(...dis)) / 2 / 10) * 10;
+    const sx = x(mid), anch = sx < 34 ? 'start' : sx > w - 34 ? 'end' : 'middle';
+    p.push(`<line x1="${sx}" y1="14" x2="${sx}" y2="${axisY}" stroke="#c9a6ff"
+      stroke-width="1" stroke-dasharray="3 4" opacity=".8"/>`);
+    p.push(`<text x="${sx}" y="9" text-anchor="${anch}" font-size="9.5" fill="#c9a6ff">your seam</text>`);
+  } else if (owned.length) {
+    // never broke: the seam lies somewhere off the right edge
+    const ax = x(Math.max(...owned)) + 12, ex = w - padR + 6;
+    p.push(`<g stroke="#c9a6ff" opacity=".6" stroke-width="1">` +
+      `<line x1="${ax}" y1="14" x2="${ex}" y2="14"/>` +
+      `<line x1="${ex - 4}" y1="10.5" x2="${ex}" y2="14"/>` +
+      `<line x1="${ex - 4}" y1="17.5" x2="${ex}" y2="14"/></g>`);
+    p.push(`<text x="${ex}" y="9" text-anchor="end" font-size="9.5" fill="#c9a6ff">seam beyond</text>`);
+  } else {
+    // always broke: the seam lies somewhere before the gentlest delay tried
+    const ax = x(Math.min(...dis)) - 12, ex = padL - 6;
+    p.push(`<g stroke="#c9a6ff" opacity=".6" stroke-width="1">` +
+      `<line x1="${ax}" y1="14" x2="${ex}" y2="14"/>` +
+      `<line x1="${ex + 4}" y1="10.5" x2="${ex}" y2="14"/>` +
+      `<line x1="${ex + 4}" y1="17.5" x2="${ex}" y2="14"/></g>`);
+    p.push(`<text x="${ex}" y="9" text-anchor="start" font-size="9.5" fill="#c9a6ff">seam before</text>`);
+  }
+  fig.innerHTML = `<svg viewBox="0 0 ${w} ${h}" role="img"
+      aria-label="your late acts on a delay axis, and where owning them stopped">${p.join('')}</svg>` +
+    `<p class="figcap">your own act, arriving late — each row one trial, top first.
+     ● you kept it · <span class="k">×</span> you gave it away · faint means you hedged.</p>`;
+}
 function miniMap(t) {
   const s = 46, pad = 6;
   const nx = v => pad + (v[0] / W) * (s - 2 * pad);
@@ -445,6 +520,7 @@ function finish() {
   } else if (dis.length) {
     sm.textContent = `Every lateness broke it — ${Math.min(...dis)}ms of silence was already enough for you to give an act away.`;
   } else sm.textContent = '';
+  seamFigure();
   const rows = document.getElementById('rows');
   rows.innerHTML = trials.map((t, i) => {
     const cls = (!t.yours && t.said) ? 'claimed' : (t.yours && !t.said) ? 'disowned' : '';

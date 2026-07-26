@@ -80,3 +80,38 @@ worth a real-phone pass on the four-button row (74px wide each — fine at
 per-player now; one more visit of polish could be bloom.
 
 Stage: 2 → 3. The direction is set and the machinery adapts to its player.
+
+## 2026-07-26T11:06Z — third tending
+
+Closed the two threads the last letter left open:
+
+- **The seam figure exists.** After the seamline text, the reveal now
+  draws a small SVG: each C trial as a mark on a 0–1200ms delay axis,
+  staircase order top to bottom, the hunt itself traced as a faint
+  polyline. Kept acts are cream dots, given-away acts violet ×s, hedged
+  answers render faint. When the staircase brackets the seam, a dashed
+  violet line drops through the figure at the estimate, labelled "your
+  seam"; when it never breaks (or always breaks) a small arrow points
+  off the tested edge — "seam beyond" / "seam before". A picture of
+  your own boundary, drawn from your own answers.
+- **The 320px worry was real.** The four-button row was 4×74px fixed +
+  gaps + padding = 366px — overflow on small phones. Buttons are now
+  `flex: 1 1 0; max-width: 78px`, so they shrink gracefully; verified
+  no row overflow and no horizontal body scroll at 320px.
+
+Verified headless (Playwright + the preinstalled Chromium) with full
+9-trial scripted runs at 390px and 320px, across answer plans that
+exercise all three seam branches: figure renders with marks + caption
+in every branch, edge labels don't clip, reveal/sureline/seamline all
+present, AGAIN restarts, zero page errors. Screenshots eyeballed.
+
+**Stage: 3 → 4, bloom.** Measuring it against the seed: the click is
+identical everywhere and only its timing lies; B proves the claim
+(destination pre-committed, minimap divergence); the reveal counts both
+failures, speaks the bloom sentence when earned, and now shows you the
+shape of your own seam. Nothing on the seed's wish-list is missing.
+
+Where to pick up: nothing is owed. If a future visit wants more, the
+only idea left standing is ambience — a barely-there room tone that
+ducks with each click might deepen the binding — but the piece does not
+need it. It is done in the way the stage table means "done".
