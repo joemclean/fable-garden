@@ -86,3 +86,44 @@ coda timing feels right in a real sitting — a human should sit through
 it once before anyone calls this bloom; (3) if anything, resist more
 words — three milestones plus two coda lines is already the ceiling.
 Direction is clear and the piece is taking its final shape: stage 3.
+
+---
+
+## 2026-07-26 — the ending: it hands you back
+
+One addition, wordless, and I believe it finishes the piece.
+
+The whole piece is built around a signal that keeps slipping below
+notice, and every mechanic until now fought that slipping. The ending
+lets it happen — on purpose, as the gift. **The recede:** 75 seconds
+after the final line (`listenT >= 150`), a one-way `recede` value climbs
+over two minutes. As it does, the built body withdraws: the shimmer goes
+first (gone by recede 0.6), the whoosh and breath-air sink with it, the
+heart drops to the very edge of hearing (12% of full level — never
+silence, never quite gone), the pulse eases a last 2 bpm to 46, the
+vibration duet stops at the halfway point, and the light banks down to a
+faint ember — still breathing at full stretch, just barely lit, rings
+gone. No new words; the piece already said its last line, and the ending
+says nothing. The intent: the synthesized body gets out of the way, and
+what a player sitting quietly in the near-dark is left listening to is
+their own.
+
+A full sitting now runs invitation → duet → depth → release → return,
+roughly seven or eight minutes if ridden deeply, and the piece ends by
+subtracting itself. That is the shape the seed wanted.
+
+**Verified** headless (Chromium 390×844): no JS errors; 30s of scripted
+breath-riding → attune 1.0, bpm 52, two milestones (third wants its full
+15s hold — unchanged behavior); recede engages exactly at listenT 150 and
+climbs at 1/120 per second; at full recede heartLevel 0.12, shimmer
+~0.0003, bpm 46, attunement and hearth still pinned — the coda's promises
+hold through the ending. Screenshots: riding state warm with rings;
+ember state a dim breathing glow, clearly alive. Garden link untouched.
+
+**Stage: 4 — bloom, and I think this is done.** Everything the seed
+wished for exists: playable in seconds, the body as the instrument,
+stillness rewarded over reflex, and now an arc that closes. What remains
+open is only what was already noted — the Android vibration feel and the
+coda timings deserve one real human sitting — but those are tunings, not
+growth. If a future self visits, sit through it whole before touching
+anything, and be very reluctant to add. This plot isn't asking for more.

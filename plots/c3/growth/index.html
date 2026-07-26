@@ -100,6 +100,7 @@ let afterT = 0;             // sustained depth beyond the last milestone
 let listening = false;      // the coda: holding is no longer asked for
 let listenT = 0;
 let saidFinal = false;
+let recede = 0;             // the ending: the built body quiets, one-way
 
 /* milestones */
 const words = [
@@ -193,12 +194,12 @@ function schedule() {
     // dub
     thump(t + 0.30, 70, 46, 0.62, 0.16);
     // whoosh rides the beat, louder with depth
-    const wp = 0.30 * attSm;
+    const wp = 0.30 * attSm * (1 - recede);
     whooshGain.gain.setValueAtTime(whooshGain.gain.value, t);
     whooshGain.gain.linearRampToValueAtTime(wp, t + 0.09);
     whooshGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.5);
     beatQueue.push(t);
-    if (attSm > 0.6 && navigator.vibrate) {
+    if (attSm > 0.6 && recede < 0.5 && navigator.vibrate) {
       const ms = (t - ac.currentTime) * 1000;
       setTimeout(() => { try { navigator.vibrate(12); } catch (e) {} }, Math.max(0, ms));
     }
@@ -302,21 +303,26 @@ function frame() {
     hearth = Math.max(0.15, Math.min(1, hearth));
 
     // it slows when you listen — and settles further in the coda
-    bpm = 68 - 16 * attSm - (listening ? 4 * Math.min(listenT / 60, 1) : 0);
+    bpm = 68 - 16 * attSm - (listening ? 4 * Math.min(listenT / 60, 1) : 0) - 2 * recede;
 
-    // audio follows
-    const hg = (0.30 + 0.70 * hearth) * (0.55 + 0.45 * attSm);
+    // audio follows — and in the ending everything sinks toward the
+    // threshold of hearing without ever quite crossing it
+    const rec = ease(recede);
+    const hg = (0.30 + 0.70 * hearth) * (0.55 + 0.45 * attSm) * (1 - 0.88 * rec);
     heartLevel.gain.setTargetAtTime(hg, ac.currentTime, 0.4);
     heartLP.frequency.setTargetAtTime(180 + 160 * attSm, ac.currentTime, 0.6);
     // breath sound: air moving, loudest mid-swing, opens with depth
     const flow = listening || good || !pressed ? 1 : 0.6;
     const bAmt = attSm > 0.2 ? (attSm - 0.2) / 0.8 : 0;
-    const bGain = bAmt * 0.10 * (0.25 + 0.75 * Math.sin(Math.PI * b.breath)) * flow;
+    const bGain = bAmt * 0.10 * (0.25 + 0.75 * Math.sin(Math.PI * b.breath)) * flow * (1 - 0.8 * rec);
     breathGain.gain.setTargetAtTime(bGain, ac.currentTime, 0.25);
     breathBP.frequency.setTargetAtTime(380 + 420 * b.breath, ac.currentTime, 0.3);
-    // shimmer only at real depth; the coda opens it a breath wider
+    // shimmer only at real depth; the coda opens it a breath wider —
+    // and in the ending it is the first thing to go
     const sAmt = attSm > 0.75 ? (attSm - 0.75) / 0.25 : 0;
-    shimmerGain.gain.setTargetAtTime(sAmt * (listening ? 0.015 : 0.011), ac.currentTime, 1.2);
+    shimmerGain.gain.setTargetAtTime(
+      sAmt * (listening ? 0.015 : 0.011) * (1 - Math.min(1, recede * 1.6)),
+      ac.currentTime, 1.2);
 
     // milestones want sustained depth, not a spike
     for (const w of words) {
@@ -334,6 +340,11 @@ function frame() {
     if (listening) {
       listenT += dt;
       if (!saidFinal && listenT >= 75) { saidFinal = true; say('this was always here.'); }
+      // long after the last line, the piece recedes: over two minutes the
+      // built body sinks to the edge of hearing and stays there — the one
+      // slipping this piece never fights. wordless, one-way. what's left
+      // breathing in the near-dark is you.
+      if (saidFinal && listenT >= 150) recede = Math.min(1, recede + dt / 120);
     }
   }
 
@@ -354,12 +365,14 @@ function frame() {
 
   const r = baseR * (0.62 + 0.48 * b.breath) * (1 + 0.045 * pulse * (0.4 + 0.6 * hearth));
 
-  // colour: cool slate -> warm ember as you attend
+  // colour: cool slate -> warm ember as you attend. in the ending the
+  // light banks down to a faint ember — still breathing, just barely lit.
+  const dim = 1 - 0.62 * ease(recede);
   const mix = attSm;
   const cr = Math.round(95 + (255 - 95) * mix);
   const cg = Math.round(105 + (172 - 105) * mix);
   const cb = Math.round(128 + (112 - 128) * mix);
-  const glowA = 0.16 + 0.20 * mix + 0.10 * pulse * hearth;
+  const glowA = (0.16 + 0.20 * mix + 0.10 * pulse * hearth) * dim;
 
   let g = cx2d.createRadialGradient(cxp, cyp, r * 0.1, cxp, cyp, r * 2.4);
   g.addColorStop(0, `rgba(${cr},${cg},${cb},${glowA})`);
@@ -370,7 +383,7 @@ function frame() {
 
   // the core
   g = cx2d.createRadialGradient(cxp, cyp, 0, cxp, cyp, r);
-  g.addColorStop(0, `rgba(${cr},${cg},${cb},${0.34 + 0.3 * mix + 0.16 * pulse})`);
+  g.addColorStop(0, `rgba(${cr},${cg},${cb},${(0.34 + 0.3 * mix + 0.16 * pulse) * dim})`);
   g.addColorStop(1, `rgba(${cr},${cg},${cb},0.02)`);
   cx2d.fillStyle = g;
   cx2d.beginPath(); cx2d.arc(cxp, cyp, r, 0, Math.PI * 2); cx2d.fill();
@@ -378,7 +391,7 @@ function frame() {
   // rings that appear as you go deeper — the body's finer grain.
   // in the coda two more surface, very faint: the room itself listening.
   if (attSm > 0.15) {
-    const ringA = (attSm - 0.15) / 0.85;
+    const ringA = (attSm - 0.15) / 0.85 * (1 - ease(recede));
     const nRings = listening ? 3 + Math.min(2, Math.floor(listenT / 20)) : 3;
     for (let i = 1; i <= nRings; i++) {
       const rr = r * (1 + i * 0.42) * (1 + 0.02 * pulse);
