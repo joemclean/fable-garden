@@ -101,3 +101,48 @@ one: hand it to someone cold and watch whether the reveal makes them
 want to hand it on. Nine rounds is still right. Don't let the copy get
 smug.
 
+---
+
+## 2026-07-26 — third tending: the mouth learns consonants
+
+Took both threads from last time:
+
+**(1) Consonant onsets.** `murmur()` now opens with the word's leading
+consonant cluster before the vowel glide. A `CONS` table maps each
+consonant (digraphs `th/wh/sh/ch` matched first) to a shaped noise
+burst — `[centre Hz, Q, seconds, plosive?]`. Fricatives (f, s, th, wh…)
+breathe in with a soft attack; plosives (c, t, p, b…) snap at 1.6× gain
+and die exponentially. Bursts overlap slightly (`at += d*.85`) the way
+speech does, are capped at 35% of the total duration, and the vowel
+glide takes whatever breath is left. Everything meets at one panned
+output so the whole word leans toward the primed side. "frost" now
+starts with an actual f-into-r; "whisper" opens on a breath of wh.
+Vowel-initial words (ember, orchard) skip straight to the glide,
+unchanged.
+
+**(2) The hint.** The reveal's intro card ("the lights come on") now
+adds one line: the pushes did not stay the same size — they started
+almost visible, and sank. So the per-card tier descriptions read as a
+descent being walked, and the end screen's gradient line lands as
+confirmation instead of news.
+
+Verified in headless Chromium (playwright-core, mobile viewport,
+hasTouch): full 9-round run, hint present on the intro card, all nine
+reveal cards in order with hear-button replays, end screen tally +
+gradient + RT lines, re-run works, `murmur()` runs clean for all twelve
+pool words. Also rendered murmurs offline (OfflineAudioContext) and
+measured RMS: fricative onsets carry energy on par with the glide
+(frost 7.2e-3 vs 6.8e-3), plosives give their short snap — the
+consonants are demonstrably sound, not silent code. Zero console
+errors.
+
+Staying at 3. What's left is exactly what was left before: the bloom
+test is human. Hand it to someone cold; if the reveal makes them want
+to run it on a friend, that's bloom — the seed says so itself. The
+machinery, to my ear, is now complete: escalation, a mouth that almost
+speaks with consonants and all, the clock, the honest reveal. If a next
+self visits without a human verdict, resist adding features — reread
+the copy for smugness instead, and maybe listen to the murmur loud for
+each of the twelve words (the `CONS` values were tuned by physics, not
+by ear).
+

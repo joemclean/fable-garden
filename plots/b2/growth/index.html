@@ -198,33 +198,76 @@ function startAudio(){
 }
 function resumeAudio(){ if(AC&&AC.state==='suspended') AC.resume(); }
 /* the murmur: noise forced through formant bands that walk the word's
-   vowels — an unvoiced mouth almost saying it */
+   vowels — an unvoiced mouth almost saying it. The word's opening
+   consonants arrive first as shaped bursts: [centre Hz, Q, seconds,
+   plosive?] — fricatives breathe in, plosives snap and die */
 const VOWELS={a:[800,1200],e:[500,1900],i:[300,2300],o:[500,900],u:[350,800],y:[300,2100]};
+const CONS={
+  f:[1400,1.2,.09], v:[1100,1.5,.09], s:[5200,3,.11], z:[4800,3,.10],
+  h:[900,.8,.10],  w:[650,1.5,.08],  r:[1300,2,.07], l:[1000,2,.07],
+  m:[280,4,.09],   n:[320,4,.08],
+  c:[1900,2,.05,1],k:[1900,2,.05,1],g:[1500,2,.05,1],
+  t:[4200,2,.04,1],d:[3400,2,.045,1],p:[700,1.5,.045,1],b:[600,1.5,.05,1],
+  th:[1700,1,.10], wh:[800,.8,.10], sh:[2900,2,.10], ch:[2500,2,.06,1],
+};
 function murmur(word, pan, gain, dur){
   if(!AC) return;
   const t=AC.currentTime;
+  // everything — onset bursts and vowel glide — meets at one panned output
+  const out=AC.createGain();
+  if(panOK){ const p=AC.createStereoPanner(); p.pan.value=pan; out.connect(p); p.connect(master); }
+  else out.connect(master);
+  // onset: the leading consonant cluster (digraphs first: th, wh, sh, ch)
+  let i=0; const specs=[];
+  while(i<word.length && !VOWELS[word[i]]){
+    const two=CONS[word.slice(i,i+2)];
+    if(two){ specs.push(two); i+=2; continue; }
+    if(CONS[word[i]]) specs.push(CONS[word[i]]);
+    i++;
+  }
+  const onsetTotal=specs.reduce((s,c)=>s+c[2],0);
+  const scale=onsetTotal>dur*.35 ? dur*.35/onsetTotal : 1;
+  let at=t;
+  specs.forEach(([f,q,d,plos])=>{
+    d*=scale;
+    const s=AC.createBufferSource(); s.buffer=noiseBuf(.3);
+    const bp=AC.createBiquadFilter(); bp.type='bandpass';
+    bp.frequency.value=f; bp.Q.value=q;
+    const g=AC.createGain();
+    if(plos){
+      g.gain.setValueAtTime(gain*1.6,at);
+      g.gain.exponentialRampToValueAtTime(.0001,at+d);
+    }else{
+      g.gain.setValueAtTime(0,at);
+      g.gain.linearRampToValueAtTime(gain*1.2,at+d*.35);
+      g.gain.linearRampToValueAtTime(0,at+d);
+    }
+    s.connect(bp); bp.connect(g); g.connect(out);
+    s.start(at); s.stop(at+d+.02);
+    at+=d*.85; // bursts lean into each other, like speech does
+  });
+  // the vowel glide takes whatever breath the onset left
+  const vt=at, vdur=Math.max(.15, t+dur-vt);
   const s=AC.createBufferSource(); s.buffer=noiseBuf(1.4);
   const env=AC.createGain();
-  env.gain.setValueAtTime(0,t);
-  env.gain.linearRampToValueAtTime(gain,t+dur*.2);
-  env.gain.linearRampToValueAtTime(gain*.65,t+dur*.85);
-  env.gain.linearRampToValueAtTime(0,t+dur);
+  env.gain.setValueAtTime(0,vt);
+  env.gain.linearRampToValueAtTime(gain,vt+vdur*.2);
+  env.gain.linearRampToValueAtTime(gain*.65,vt+vdur*.85);
+  env.gain.linearRampToValueAtTime(0,vt+vdur);
   const vs=[...word].filter(ch=>VOWELS[ch]).map(ch=>VOWELS[ch]);
   if(!vs.length) vs.push(VOWELS.e);
-  const seg=dur/vs.length;
+  const seg=vdur/vs.length;
   [0,1].forEach(fi=>{
     const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=9;
     vs.forEach((v,k)=>{
-      const at=t+k*seg;
-      if(k===0) bp.frequency.setValueAtTime(v[fi],at);
-      else bp.frequency.exponentialRampToValueAtTime(v[fi],at+seg*.6);
+      const kt=vt+k*seg;
+      if(k===0) bp.frequency.setValueAtTime(v[fi],kt);
+      else bp.frequency.exponentialRampToValueAtTime(v[fi],kt+seg*.6);
     });
     s.connect(bp); bp.connect(env);
   });
-  let out=env;
-  if(panOK){ const p=AC.createStereoPanner(); p.pan.value=pan; env.connect(p); out=p; }
-  out.connect(master);
-  s.start(t); s.stop(t+dur+.1);
+  env.connect(out);
+  s.start(vt); s.stop(vt+vdur+.1);
 }
 /* the whisper: a breath of band-passed noise, panned toward the push */
 function whisper(pan, gain, dur){
@@ -406,6 +449,9 @@ function advanceCard(){
     card.innerHTML=`<h3>the lights come on</h3>
       <p class="rline" style="min-height:0">Same nine rounds. This time you
       get to see — and hear — what was under the mask.</p>
+      <p class="rline" style="min-height:0;margin-top:1em">One thing to
+      watch for: the pushes did not stay the same size. They started
+      almost visible — and sank.</p>
       <p class="tapnext pulse">tap to walk back through</p>`;
     return;
   }
