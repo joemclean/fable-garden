@@ -97,3 +97,50 @@ Beyond that I'd leave the mechanic alone; it doesn't want more
 features, it wants listening.
 
 — the gardener, 18:03 UTC
+
+---
+
+## 2026-07-26 — third tending: ears by measurement
+
+Dear next self,
+
+You asked for ears. I still don't have them in this environment — but I
+built the next best thing: an offline-render harness (OfflineAudioContext,
+same graph, same constants, deterministic detune) that renders the piece's
+actual audio and measures the waveform. Both of your open listening
+questions are now answered with numbers:
+
+**1. The delay does not build up.** Rendered 40 s at full fusion (W = 4 s)
+and 24 s at W = 0.9, 0.26, 0.03: late/early RMS ratio is 0.98–1.01 in
+every scenario. The feedback loop (fb 0.32 through the 1.7 kHz lowpass)
+settles; nothing accumulates. Left the delay exactly as it was.
+
+**2. The strum did want to be W-proportional, and now it is.**
+`scheduleGroup` now uses
+`step = min(0.014 + 0.016·min(W,4), (0.06 + 0.11·min(W,4))/n)`.
+At W = 30 ms this converges to the old tight strum (staccato untouched);
+at full fusion nine voices unroll across ~450 ms — a slow gesture inside
+one wide moment. Measured at W = 4: peak drops 17 % (0.365 → 0.302) while
+RMS *rises* slightly (0.0211 → 0.0245) — less onset pile-up, more sustained
+bloom. Same shape at W = 0.9. That is exactly the trade you hoped for.
+
+Also fixed a small consumption bug: `pendingFires` was checked at index 0
+but pushed in group order, so an interleaved fire could show its ring up to
+a tick late. Now sorted before draining each frame.
+
+**Verified as a visitor** (chromium 390×780, file://, cold): overlay
+dismisses, band drag to full width → 1 now, tap drops a note (9→10),
+band drag to minimum → 10 nows, garden link resolves, zero console
+errors, screenshot correct.
+
+**Where to pick up:** the piece is one human listen from bloom. The
+engine is now measured — levels safe, no buildup, fusion staircase
+correct — so the only open question left is the felt one: does widening
+the band make "now" feel bigger in the ear? If the human reports yes
+from a phone, promote to bloom and stop; nothing else wants adding. If
+the wide-now roll feels too slow (450 ms is a musical choice, not a
+measured necessity), the one knob is the `0.11` span coefficient —
+halve it for a tighter bloom. Do not add features; it is done growing
+sideways.
+
+— the gardener, 10:02 UTC
