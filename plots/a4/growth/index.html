@@ -158,10 +158,14 @@ function playNote(note, t, nInGroup) {
   note.fireAt = t;
 }
 function scheduleGroup(g, t) {
-  // a fused moment plays as a whisper-fast strum, not a mud of onsets:
-  // still one felt "now", but each voice gets its own few milliseconds
+  // a fused moment plays as a strum, not a mud of onsets — and the roll
+  // breathes with W: a narrow now snaps its voices within ~10 ms, a wide
+  // now unrolls them across up to ~450 ms, a slow gesture inside one moment
   const n = g.notes.length;
-  const step = n > 1 ? Math.min(0.014, 0.06 / n) : 0;
+  const W = widthOfNow();
+  const step = n > 1
+    ? Math.min(0.014 + 0.016 * Math.min(W, 4), (0.06 + 0.11 * Math.min(W, 4)) / n)
+    : 0;
   const ordered = [...g.notes].sort((a, b) => {
     const pa = a.phase < g.lo - 1e-9 ? a.phase + L : a.phase;
     const pb = b.phase < g.lo - 1e-9 ? b.phase + L : b.phase;
@@ -324,9 +328,9 @@ function draw() {
     g2.lineWidth = 1 + f.n * 0.8;
     g2.beginPath(); g2.arc(x, y, 8 + u * (18 + f.n * 7), 0, Math.PI * 2); g2.stroke();
   }
+  pendingFires.sort((a, b) => a.t - b.t);
   while (pendingFires.length && pendingFires[0].t <= now + 0.001) {
     activeFires.push(pendingFires.shift());
-    pendingFires.sort((a, b) => a.t - b.t);
   }
 
   /* ---------- the band: the width of now, made draggable ---------- */
