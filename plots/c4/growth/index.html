@@ -414,11 +414,29 @@ canvas.addEventListener('pointermove', (e) => {
   if (e.pointerId !== pointerId) return;
   holdPt.x = e.clientX; holdPt.y = e.clientY;
 });
+function fullyHeard(f) {
+  dissolveFrag(f, true);
+  bloomChord();
+  stopDrone(false);
+  glints.push({ x: f.x, y: f.y, phase: Math.random() * 6, drift: 6 + Math.random() * 6, settle: 0 });
+  if (glints.length > 34) glints.shift();
+  heldCount++;
+  griefLine = { text: grief(passedWhileHeld), born: performance.now() };
+  if (MEMORY.has(heldCount)) griefQueue.push(MEMORY.get(heldCount));
+  if (heldCount === 12) codaClock = 22;
+  const i = frags.indexOf(f);
+  if (i >= 0) frags.splice(i, 1);
+  held = null; pointerId = null;
+}
+
 function release(early) {
   pointerId = null;
   if (!held) return;
   const f = held; held = null;
-  if (early) {
+  if (f.revealed >= f.restWords.length) {
+    // heard to the last word — letting go completes it, never loses it
+    fullyHeard(f);
+  } else if (early) {
     dissolveFrag(f, false);
     sighNote();
     stopDrone(false);
@@ -491,20 +509,8 @@ function frame(now) {
         }
       } else {
         f.lingerClock += dt;
-        if (f.lingerClock > 1.5) {
-          // fully heard: it blooms, and is gone
-          dissolveFrag(f, true);
-          bloomChord();
-          stopDrone(false);
-          glints.push({ x: f.x, y: f.y, phase: Math.random() * 6, drift: 6 + Math.random() * 6, settle: 0 });
-          if (glints.length > 34) glints.shift();
-          heldCount++;
-          griefLine = { text: grief(passedWhileHeld), born: now };
-          if (MEMORY.has(heldCount)) griefQueue.push(MEMORY.get(heldCount));
-          if (heldCount === 12) codaClock = 22;
-          frags.splice(i, 1);
-          held = null; pointerId = null;
-        }
+        // fully heard: it blooms, and is gone
+        if (f.lingerClock > 1.5) fullyHeard(f);
       }
     }
   }
